@@ -41,9 +41,10 @@ func newCanvas(cellsW, cellsH, s int) *canvas.Canvas {
 	return canvas.New(cellsW*4*s, cellsH*4*s, palette)
 }
 
-// drawAt paints a cell with its top-left corner at dot (ox,oy) as a classic
-// block: square, with a chamfered corner and, from scale 2 up, a dot of air
-// on its right and bottom so the stack reads as a grid of bricks.
+// drawAt paints a cell with its top-left corner at dot (ox,oy). Corners are
+// sharp. A side joined to the same piece butts against its neighbour, so a
+// piece is one solid shape; every other side leaves a dot of air from scale
+// 2 up, so neighbouring pieces stay distinct.
 func drawAt(c *canvas.Canvas, ox, oy, s int, cell Cell) {
 	if cell.Color == None {
 		return
@@ -53,8 +54,14 @@ func drawAt(c *canvas.Canvas, ox, oy, s int, cell Cell) {
 	if s >= 2 {
 		gap = 1
 	}
-	all := canvas.Corners{TL: true, TR: true, BL: true, BR: true}
-	c.Tile(ox, oy, n-gap, n-gap, 1, all, inkFor(cell))
+	w, h := n, n
+	if cell.Links&LinkR == 0 {
+		w -= gap
+	}
+	if cell.Links&LinkD == 0 {
+		h -= gap
+	}
+	c.Tile(ox, oy, w, h, 0, canvas.Corners{}, inkFor(cell))
 }
 
 // drawOutline paints a cell as a one-dot ring in ink i, with no wall on a
@@ -76,13 +83,7 @@ func drawOutline(c *canvas.Canvas, ox, oy, s int, cell Cell, i canvas.Ink) {
 		h -= gap
 	}
 	l := cell.Links
-	round := canvas.Corners{
-		TL: l&(LinkL|LinkU) == 0,
-		TR: l&(LinkR|LinkU) == 0,
-		BL: l&(LinkL|LinkD) == 0,
-		BR: l&(LinkR|LinkD) == 0,
-	}
-	c.Tile(ox, oy, w, h, 1, round, i)
+	c.Tile(ox, oy, w, h, 0, canvas.Corners{}, i)
 	x0, x1, y0, y1 := 1, w-1, 1, h-1
 	if l&LinkL != 0 {
 		x0 = 0
