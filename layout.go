@@ -114,15 +114,13 @@ func renderTitle(ts int) string {
 }
 
 const (
-	colPad = 1 // columns between a side column and the board frame
+	colPad = 1 // columns between the side column and the board frame
 
-	// controlsW is the widest padded key hint ("enter start"), so a side
-	// column never has to break a hint in two.
-	controlsW = 13
-	// maxControlLines is the most hints any phase shows, one per line.
-	maxControlLines = 6
-	// statsW is a padded stat with a seven-digit value.
+	// statsW is a padded stat with a seven-digit value; the widest note
+	// ("RESUMING IN 3", padded) is the same width.
 	statsW = 15
+	// statRows is one line per stat plus the note under a blank row.
+	statRows = 4 + 2
 )
 
 // boardRows and boardCols are the framed board's size at scale s.
@@ -132,97 +130,76 @@ func boardCols(s int) int { return BoardW*2*s + 2 }
 // nextW is the padded NEXT line at scale s.
 func nextW(s int) int { return 8 + 4*s }
 
-// colWidth is the width of each side column at board scale s and title scale
-// ts. Both columns are the same width, which keeps the board centred.
+// colWidth is the width of the side column at board scale s and title scale ts.
 func colWidth(s, ts int) int {
-	return max(titleWidth(ts)+2, nextW(s), controlsW, statsW)
+	return max(titleWidth(ts)+2, nextW(s), statsW)
 }
 
 // layoutWidth is the columns the side-by-side layout needs.
 func layoutWidth(s, ts int) int {
-	return 2*(colWidth(s, ts)+colPad) + boardCols(s)
+	return colWidth(s, ts) + colPad + boardCols(s)
 }
 
-// sideRows is the most rows the left column can need: title, next pill and
-// controls, each separated by a blank row.
+// sideRows is the rows the side column needs: title, next pill and stats,
+// each separated by a blank row.
 func sideRows(s, ts int) int {
-	return titleHeight(ts) + 1 + s + 1 + maxControlLines
+	return titleHeight(ts) + 1 + s + 1 + statRows
 }
 
+// stats lists the counters and, under them, the note for the current phase.
 func (m model) stats() string {
 	stat := func(label string, v any) string {
 		return labelStyle.Render(label) + " " + valueStyle.Render(fmt.Sprint(v))
 	}
-	return padStyle.Render(strings.Join([]string{
+	lines := []string{
 		stat("LEVEL", m.g.Level), stat("SPEED", m.g.Speed), stat("SCORE", m.g.Score), stat("VIRUS", m.g.Viruses),
-	}, "\n"))
+	}
+	if n := m.note(); n != "" {
+		lines = append(lines, "", noteStyle.Render(n))
+	}
+	return padStyle.Render(strings.Join(lines, "\n"))
 }
 
-// controls is the key hint line for the current phase, wrapped to the side column.
-func (m model) controls() string {
-	var items []string
-	note := ""
+// note is the phase the player has to act on, or "" during play.
+func (m model) note() string {
 	switch m.phase {
 	case phaseMenu:
-		items = []string{"◀ ▶ level", "▲ ▼ speed", "enter start"}
-	case phaseFalling, phaseClearing, phaseDropping:
-		items = []string{"◀ ▶ move", "▲ z rotate", "▼ drop", "spc slam", "p pause"}
+		return "ENTER START"
 	case phasePaused:
-		note, items = "PAUSED", []string{"p resume"}
 		if m.countdown > 0 {
-			note = fmt.Sprintf("RESUMING IN %d", m.countdown)
+			return fmt.Sprintf("RESUMING IN %d", m.countdown)
 		}
+		return "PAUSED"
 	case phaseLevelClear:
-		note, items = "LEVEL CLEAR", []string{"enter next"}
+		return "LEVEL CLEAR"
 	case phaseGameOver:
-		note, items = "GAME OVER", []string{"enter menu"}
+		return "GAME OVER"
 	}
-	items = append(items, "q quit")
-	wrap := colWidth(m.scale, m.titleScale) - 2
-	var lines []string
-	line := ""
-	if note != "" {
-		line = noteStyle.Render(note)
-	}
-	for _, it := range items {
-		it = dimStyle.Render(it)
-		if line == "" {
-			line = it
-		} else if lipgloss.Width(line)+3+lipgloss.Width(it) > wrap {
-			lines = append(lines, line)
-			line = it
-		} else {
-			line += "   " + it
-		}
-	}
-	lines = append(lines, line)
-	return padStyle.Render(strings.Join(lines, "\n"))
+	return ""
 }
 
 func (m model) next() string {
 	return padStyle.Render(lipgloss.JoinHorizontal(lipgloss.Center, labelStyle.Render("NEXT"), "  ", renderNext(m.g.Next, m.scale)))
 }
 
-// blocks centres the bottle and fills the height with it. The left column
-// hugs the bottle with the title and next pill at the top and the controls at
-// the bottom; the right column holds the stats. Blocks are ordered left to
-// right for compose.
+// blocks fills the height with the bottle and hugs its left side with one
+// column: title, next pill, then the stats and note. The column and bottle
+// are centred together. Blocks are ordered left to right for compose.
 func (m model) blocks() []block {
 	board := newBlock(frameStyle.Render(renderBoard(m.g, m.scale)))
-	board.x = (m.width - board.w) / 2
+	colW := colWidth(m.scale, m.titleScale)
+	board.x = (m.width-colW-colPad-board.w)/2 + colW + colPad
 	board.y = (m.height - board.h()) / 2
 
 	title := newBlock(padStyle.Render(renderTitle(m.titleScale)))
 	next := newBlock(m.next())
-	ctl := newBlock(m.controls())
 	stats := newBlock(m.stats())
 
-	leftEdge := board.x - colPad
-	title.x, title.y = leftEdge-title.w, board.y
-	next.x, next.y = leftEdge-next.w, title.y+title.h()+1
-	ctl.x, ctl.y = leftEdge-ctl.w, max(next.y+next.h()+1, board.y+board.h()-ctl.h())
-	stats.x, stats.y = board.x+board.w+colPad, board.y
-	return []block{title, next, ctl, board, stats}
+	edge := board.x - colPad
+	title.x, title.y = edge-title.w, board.y
+	next.x, next.y = edge-next.w, title.y+title.h()+1
+	stats.x, stats.y = edge-stats.w, next.y+next.h()+1
+	return []block{title, next, stats, board}
 }
 
 func (m model) View() string {
