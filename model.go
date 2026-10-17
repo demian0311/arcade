@@ -1,12 +1,9 @@
 package main
 
 import (
-	"fmt"
-	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
 type phase int
@@ -25,11 +22,9 @@ const (
 	frameDelay = 33 * time.Millisecond // falling-pill animation rate
 	clearDelay = 350 * time.Millisecond
 	dropDelay  = 90 * time.Millisecond
-	sidebarW   = 24
 	// holdGap separates key auto-repeat from a real re-press. Terminals send no
 	// key-up, so a down press less than this after the previous one counts as held.
 	holdGap  = 100 * time.Millisecond
-	chromeW  = 6 // bottle border, gap to the sidebar, outer padding
 	maxScale = 4
 )
 
@@ -49,6 +44,7 @@ type model struct {
 	speed         Speed
 	width, height int
 	scale         int
+	titleScale    int
 	tickID        int
 	lastFrame     time.Time
 	lastDown      time.Time
@@ -81,17 +77,27 @@ func (m *model) frame() tea.Cmd {
 	return m.tick(frameDelay)
 }
 
-// fitScale picks the largest cell scale whose board and sidebar fit the terminal.
-func fitScale(w, h int) int {
-	s := min((h-2)/BoardH, (w-chromeW-sidebarW)/(BoardW*2))
-	return min(s, maxScale)
+// fitScale picks the largest board scale, then the largest title scale, whose
+// stacked layout fits the terminal. Both are 0 when nothing fits.
+func fitScale(w, h int) (s, ts int) {
+	for s = maxScale; s >= 1; s-- {
+		if BoardW*2*s+2 > w-2 {
+			continue
+		}
+		for ts = maxTitleScale; ts >= 1; ts-- {
+			if layoutHeight(s, ts) <= h && titleWidth(ts) <= w-2 {
+				return s, ts
+			}
+		}
+	}
+	return 0, 0
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		m.scale = fitScale(msg.Width, msg.Height)
+		m.scale, m.titleScale = fitScale(msg.Width, msg.Height)
 		m.bg.resize(msg.Width, msg.Height)
 		return m, nil
 	case tea.KeyMsg:
@@ -234,92 +240,4 @@ func (m model) resolve() (tea.Model, tea.Cmd) {
 	}
 	m.phase = phaseFalling
 	return m, m.frame()
-}
-
-var (
-	frameStyle = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("#8a8a8a"))
-	titleStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#ff6b6b"))
-	labelStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#8a8a8a"))
-	valueStyle = lipgloss.NewStyle().Bold(true)
-	noteStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#ffd75f"))
-	dimStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#6c6c6c"))
-)
-
-func (m model) View() string {
-	if m.width == 0 {
-		return ""
-	}
-	if m.scale < 1 {
-		need := fmt.Sprintf("pilldoc needs %dx%d, have %dx%d", BoardW*2+chromeW+sidebarW, BoardH+2, m.width, m.height)
-		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, need)
-	}
-	frame := frameStyle.Render(renderBoard(m.g, m.scale))
-	content := lipgloss.NewStyle().Padding(0, 1).Render(lipgloss.JoinHorizontal(lipgloss.Top, frame, "  ", m.sidebar()))
-	return m.compose(content)
-}
-
-// compose centres the game over the backdrop; the game block is opaque, the field shows around it.
-func (m model) compose(content string) string {
-	lines := strings.Split(content, "\n")
-	cw, ch := lipgloss.Width(content), len(lines)
-	x0, y0 := max(0, (m.width-cw)/2), max(0, (m.height-ch)/2)
-	m.bg.resize(m.width, m.height)
-	st := m.bg.style()
-	var out strings.Builder
-	for row := 0; row < m.height; row++ {
-		if row >= y0 && row < y0+ch {
-			left, right := m.bg.line(row, x0, x0+cw)
-			out.WriteString(st.Render(left))
-			out.WriteString(lines[row-y0])
-			out.WriteString(st.Render(right))
-		} else {
-			left, _ := m.bg.line(row, m.width, m.width)
-			out.WriteString(st.Render(left))
-		}
-		if row < m.height-1 {
-			out.WriteByte('\n')
-		}
-	}
-	return out.String()
-}
-
-func (m model) sidebar() string {
-	stat := func(label string, v any) string {
-		return labelStyle.Render(fmt.Sprintf("%-6s", label)) + " " + valueStyle.Render(fmt.Sprint(v))
-	}
-	lines := []string{
-		titleStyle.Render("P I L L D O C"),
-		"",
-		stat("LEVEL", m.g.Level),
-		stat("SPEED", m.g.Speed),
-		stat("SCORE", m.g.Score),
-		stat("VIRUS", m.g.Viruses),
-		"",
-		labelStyle.Render("NEXT"),
-		renderNext(m.g.Next, m.scale),
-		"",
-	}
-	switch m.phase {
-	case phaseMenu:
-		lines = append(lines,
-			dimStyle.Render("◀ ▶  level"),
-			dimStyle.Render("▲ ▼  speed"),
-			"",
-			noteStyle.Render("enter  start"))
-	case phaseFalling, phaseClearing, phaseDropping:
-		lines = append(lines,
-			dimStyle.Render("◀ ▶  move"),
-			dimStyle.Render("▲ z  rotate"),
-			dimStyle.Render("▼    drop"),
-			dimStyle.Render("spc  slam"),
-			dimStyle.Render("p    pause"))
-	case phasePaused:
-		lines = append(lines, noteStyle.Render("PAUSED"), dimStyle.Render("p    resume"))
-	case phaseLevelClear:
-		lines = append(lines, noteStyle.Render("LEVEL CLEAR"), dimStyle.Render("enter  next level"))
-	case phaseGameOver:
-		lines = append(lines, noteStyle.Render("GAME OVER"), dimStyle.Render("enter  menu"))
-	}
-	lines = append(lines, dimStyle.Render("q    quit"))
-	return lipgloss.NewStyle().Width(sidebarW).Render(strings.Join(lines, "\n"))
 }
