@@ -48,6 +48,8 @@ type bgMsg struct{ at time.Time }
 type model struct {
 	g             *Game
 	phase         phase
+	resume        phase // the phase a pause returns to
+	blurred       bool  // the terminal lost focus; the view fades and play pauses
 	level         int
 	speed         Speed
 	width, height int
@@ -83,6 +85,26 @@ func (m *model) tick(d time.Duration) tea.Cmd {
 	return tea.Tick(d, func(t time.Time) tea.Msg { return tickMsg{id, t} })
 }
 
+// pause stops play in any running phase and remembers where to resume.
+func (m *model) pause() {
+	switch m.phase {
+	case phaseFalling, phaseClearing, phaseDropping:
+		m.resume, m.phase = m.phase, phasePaused
+	}
+}
+
+// unpause returns to the phase pause left and restarts its clock.
+func (m *model) unpause() tea.Cmd {
+	m.phase = m.resume
+	switch m.phase {
+	case phaseClearing:
+		return m.tick(clearDelay)
+	case phaseDropping:
+		return m.tick(dropDelay)
+	}
+	return m.frame()
+}
+
 // frame schedules the next pill animation frame and marks when the previous one was.
 func (m *model) frame() tea.Cmd {
 	m.lastFrame = time.Now()
@@ -112,6 +134,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 		m.scale, m.titleScale = fitScale(msg.Width, msg.Height)
 		m.bg.resize(msg.Width, msg.Height)
+		return m, nil
+	case tea.BlurMsg:
+		m.blurred = true
+		m.pause()
+		return m, nil
+	case tea.FocusMsg:
+		m.blurred = false
 		return m, nil
 	case tea.KeyMsg:
 		return m.key(msg.String())
@@ -187,12 +216,11 @@ func (m model) key(k string) (tea.Model, tea.Cmd) {
 			}
 			return m.lock()
 		case "p":
-			m.phase = phasePaused
+			m.pause()
 		}
 	case phasePaused:
 		if k == "p" {
-			m.phase = phaseFalling
-			return m, m.frame()
+			return m, m.unpause()
 		}
 	case phaseLevelClear:
 		if k == "enter" {

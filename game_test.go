@@ -264,3 +264,30 @@ func TestViewFitsTerminal(t *testing.T) {
 		}
 	}
 }
+
+func TestBlurPausesAndFocusKeepsPaused(t *testing.T) {
+	m := newModel()
+	mm, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = mm.(model)
+	for _, ph := range []phase{phaseFalling, phaseClearing, phaseDropping} {
+		m.phase = ph
+		mm, _ = m.Update(tea.BlurMsg{})
+		m = mm.(model)
+		if m.phase != phasePaused || !m.blurred {
+			t.Fatalf("from %d: phase %d blurred %v after blur", ph, m.phase, m.blurred)
+		}
+		if strings.Count(m.View(), "\n")+1 != 40 {
+			t.Fatal("faded view lost rows")
+		}
+		mm, _ = m.Update(tea.FocusMsg{})
+		m = mm.(model)
+		if m.phase != phasePaused || m.blurred {
+			t.Fatalf("focus should unfade but stay paused, phase %d blurred %v", m.phase, m.blurred)
+		}
+		mm, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("p")})
+		m = mm.(model)
+		if m.phase != ph || cmd == nil {
+			t.Fatalf("p should resume phase %d with a tick, got %d cmd %v", ph, m.phase, cmd != nil)
+		}
+	}
+}

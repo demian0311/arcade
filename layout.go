@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 var (
@@ -14,6 +15,7 @@ var (
 	noteStyle  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#ffd75f"))
 	dimStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("#6c6c6c"))
 	padStyle   = lipgloss.NewStyle().Padding(0, 1)
+	fadeStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("#585858"))
 )
 
 // A block is an opaque rectangle laid over the backdrop.
@@ -206,7 +208,21 @@ func (m model) View() string {
 		need := fmt.Sprintf("pilldoc needs %dx%d, have %dx%d", layoutWidth(1, 1), boardRows(1), m.width, m.height)
 		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, need)
 	}
-	return m.compose(m.blocks())
+	v := m.compose(m.blocks())
+	if m.blurred {
+		return fade(v)
+	}
+	return v
+}
+
+// fade drops every colour from a rendered view and paints it one dim grey, so
+// an unfocused terminal reads as asleep.
+func fade(v string) string {
+	lines := strings.Split(ansi.Strip(v), "\n")
+	for i, l := range lines {
+		lines[i] = fadeStyle.Render(l)
+	}
+	return strings.Join(lines, "\n")
 }
 
 // compose paints the backdrop and lays each block over it.
