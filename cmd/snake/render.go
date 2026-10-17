@@ -97,7 +97,7 @@ func drawHead(c *canvas.Canvas, g *Game, s, off int, i canvas.Ink) {
 	}
 	c.Tile(ox, oy, w, h, n/2, round, i)
 
-	e := max(1, n/8) // eye size in dots
+	e := max(1, n/8)       // eye size in dots
 	back, side := n/2, n/4 // eyes sit in the solid part of the head, not the tapering nose
 	var eyes [2]Point
 	switch g.Dir {
