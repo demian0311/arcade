@@ -240,10 +240,15 @@ func (m model) lock() (tea.Model, tea.Cmd) {
 		m.phase = phaseGameOver
 		return m, nil
 	}
-	if m.g.MarkFull() > 0 {
+	if n := m.g.MarkFull(); n > 0 {
 		m.phase = phaseClearing
 		m.fx.clearAt = time.Now()
-		m.bg.Flare(hex[Orange])
+		sum := 0
+		for _, p := range m.fx.landed {
+			sum += p.X
+		}
+		m.fx.clearCX = float64(sum) / float64(len(m.fx.landed))
+		m.bg.Flare([...]string{"", hex[m.g.Last], hex[Yellow], hex[Orange], "#ffffff"}[min(n, 4)])
 		return m, m.frame()
 	}
 	return m.spawn()

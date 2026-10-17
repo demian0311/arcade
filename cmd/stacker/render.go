@@ -48,7 +48,8 @@ const (
 	landFlash  = 300 * time.Millisecond // a landed piece goes white, then bright, then settles
 	landWhite  = 90 * time.Millisecond
 	slamTrail  = 160 * time.Millisecond // the band a slam crossed fades
-	clearDelay = 380 * time.Millisecond // a full row burns and collapses from the centre
+	clearDelay = 260 * time.Millisecond // a full row shatters outward from the landed piece
+	sparksPer  = 3                      // sparks thrown by each shattered cell
 )
 
 // effects is what the renderer animates on top of the game state. Ages are
@@ -62,19 +63,48 @@ type effects struct {
 	slamY1   int
 	slamAt   time.Time
 	clearAt  time.Time // when the current clear flash began
+	clearCX  float64   // column the shatter spreads from: the landed piece's centre
 }
 
-// burnInk is a clearing cell's colour at progress t in 0..1.
-func burnInk(t float64) canvas.Ink {
-	switch {
-	case t < 0.25:
-		return inkWhite
-	case t < 0.5:
-		return canvas.Ink(Yellow)
-	case t < 0.75:
-		return canvas.Ink(Orange)
+// popAt is the moment, in 0..1 of clearDelay, when a clearing cell at
+// column x bursts: the wave starts at cx and reaches the far wall by 0.6.
+func popAt(x int, cx float64) float64 {
+	far := max(cx, float64(BoardW-1)-cx)
+	return 0.05 + 0.55*math.Abs(float64(x)-cx)/max(far, 1)
+}
+
+// noise is a cheap deterministic hash in 0..1, so sparks need no storage.
+func noise(a, b, c int) float64 {
+	h := uint32(a*73856093) ^ uint32(b*19349663) ^ uint32(c*83492791)
+	h ^= h >> 13
+	h *= 0x5bd1e995
+	h ^= h >> 15
+	return float64(h&0xffff) / 0xffff
+}
+
+// sparks draws the debris of a cell that burst at time t0 (seconds) as seen
+// at time t: a few dots thrown up and out, falling back under gravity.
+func sparks(c *canvas.Canvas, x, y, n int, color Color, t0, t float64) {
+	if t <= t0 {
+		return
 	}
-	return inkEmber
+	age := t - t0
+	ox, oy := float64(x*n)+float64(n)/2, float64(y*n)+float64(n)/2
+	for i := 0; i < sparksPer; i++ {
+		vx := (noise(x, y, i*3) - 0.5) * 14 * float64(n)    // dots per second, either way
+		vy := -(0.6 + noise(x, y, i*3+1)) * 10 * float64(n) // upwards
+		px := ox + vx*age
+		py := oy + vy*age + 0.5*40*float64(n)*age*age
+		ink := canvas.Ink(color) | inkBright
+		if age < 0.08 {
+			ink = inkWhite
+		}
+		for dy := 0; dy < max(1, n/8); dy++ {
+			for dx := 0; dx < max(1, n/8); dx++ {
+				c.Set(int(px)+dx, int(py)+dy, ink)
+			}
+		}
+	}
 }
 
 func inkFor(c Cell) canvas.Ink {
@@ -247,10 +277,15 @@ func renderBoard(g *Game, s int, fx effects, now time.Time) string {
 			ink := inkFor(cell)
 			switch {
 			case cell.Clearing:
-				if math.Abs(float64(x)-float64(BoardW-1)/2) < clearT*float64(BoardW)/2 {
+				pop := popAt(x, fx.clearCX)
+				if clearT >= pop {
+					sparks(c, x, y, n, cell.Color, pop*clearDelay.Seconds(), clearT*clearDelay.Seconds())
 					continue
 				}
-				ink = burnInk(clearT)
+				ink = canvas.Ink(cell.Color) | inkBright
+				if clearT >= pop-0.08 {
+					ink = inkWhite // the instant before it bursts
+				}
 			case landed[Point{x, y}]:
 				ink = landInk
 				if landInk == inkBright {
