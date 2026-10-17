@@ -176,6 +176,24 @@ func TestHeldDownDoesNotCarryToNextPill(t *testing.T) {
 	}
 }
 
+func TestReleasingDownEndsSoftDrop(t *testing.T) {
+	m := newModel()
+	t0 := time.Now()
+	m.pressDown(t0)
+	if !m.softActive(t0.Add(holdGap / 2)) {
+		t.Fatal("soft should hold just after a press")
+	}
+	if m.softActive(t0.Add(holdGap * 2)) {
+		t.Fatal("soft should end once presses stop arriving")
+	}
+	for i := 1; i <= 8; i++ { // auto-repeat at 25 ms
+		m.pressDown(t0.Add(time.Duration(i) * 25 * time.Millisecond))
+	}
+	if !m.softActive(t0.Add(250 * time.Millisecond)) {
+		t.Fatal("repeats should keep soft alive")
+	}
+}
+
 func TestBackdropCoversTerminal(t *testing.T) {
 	b := &backdrop{}
 	b.resize(60, 20)

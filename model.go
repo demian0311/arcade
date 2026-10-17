@@ -110,6 +110,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case phaseFalling:
 			dt := msg.at.Sub(m.lastFrame)
 			m.lastFrame = msg.at
+			m.g.Soft = m.softActive(msg.at)
 			if m.g.Advance(dt) {
 				return m.lock()
 			}
@@ -200,7 +201,8 @@ func (m model) lock() (tea.Model, tea.Cmd) {
 	return m.resolve()
 }
 
-// pressDown starts the soft drop, unless the key is still held from the previous pill.
+// pressDown registers a down press. Soft drop runs while presses keep arriving
+// within holdGap of each other, and a key still held from the previous pill is ignored.
 func (m *model) pressDown(at time.Time) {
 	held := !m.lastDown.IsZero() && at.Sub(m.lastDown) < holdGap
 	m.lastDown = at
@@ -209,6 +211,11 @@ func (m *model) pressDown(at time.Time) {
 	}
 	m.softBlocked = false
 	m.g.Soft = true
+}
+
+// softActive reports whether the down key counts as held right now.
+func (m model) softActive(at time.Time) bool {
+	return !m.softBlocked && !m.lastDown.IsZero() && at.Sub(m.lastDown) < holdGap
 }
 
 // resolve runs after a lock or a settled cascade: flash matches, or spawn, or end the round.
