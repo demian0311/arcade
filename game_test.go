@@ -140,6 +140,9 @@ func TestSoftDropResetsOnLock(t *testing.T) {
 	if g.Pill.Y != BoardH-1 {
 		t.Fatalf("soft drop stopped at y=%d", g.Pill.Y)
 	}
+	if g.Rest != 0 {
+		t.Fatalf("a soft-dropped pill should lock on landing, rest=%v", g.Rest)
+	}
 	g.Lock()
 	if g.Soft || g.Prog != 0 {
 		t.Fatalf("soft=%v prog=%.2f after lock", g.Soft, g.Prog)

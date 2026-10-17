@@ -128,8 +128,9 @@ type Game struct {
 
 const (
 	softInterval = 45 * time.Millisecond
-	// lockDelay is how long a pill may sit on something before it locks, at any
-	// speed; a move or turn restarts it, up to maxLockResets times per pill.
+	// lockDelay is how long a pill may sit on something before it locks when it
+	// landed under gravity; a move or turn restarts it, up to maxLockResets times
+	// per pill. A pill driven down by soft drop locks the moment it lands.
 	lockDelay     = 350 * time.Millisecond
 	maxLockResets = 8
 )
@@ -223,6 +224,9 @@ func (g *Game) Advance(dt time.Duration) bool {
 	}
 	if !g.canFall() {
 		g.Prog = 0
+		if g.Soft {
+			return true
+		}
 		g.Rest += dt
 		return g.Rest >= lockDelay
 	}

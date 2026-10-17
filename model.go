@@ -19,9 +19,9 @@ const (
 )
 
 const (
-	frameDelay = 33 * time.Millisecond // falling-pill animation rate
-	clearDelay = 350 * time.Millisecond
-	dropDelay  = 90 * time.Millisecond
+	frameDelay = 33 * time.Millisecond  // falling-pill animation rate
+	clearDelay = 200 * time.Millisecond // matched cells flash before they vanish
+	dropDelay  = 50 * time.Millisecond  // one row of cascade
 	// Terminals send no key-up, so a held key is one press, a pause (the repeat
 	// delay, 250 ms on Hyprland's default), then auto-repeat presses 25 ms apart.
 	// holdGap is how long a repeat press keeps the key counted as held; a longer
