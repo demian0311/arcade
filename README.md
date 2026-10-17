@@ -8,6 +8,7 @@ and an animated field fills the rest of the screen.
 |---|---|---|
 | pilldoc | `go install github.com/demian0311/arcade/cmd/pilldoc@latest` | Dr. Mario |
 | stacker | `go install github.com/demian0311/arcade/cmd/stacker@latest` | Falling tetrominoes |
+| snake | `go install github.com/demian0311/arcade/cmd/snake@latest` | Snake |
 
 Every game needs a font with braille glyphs. Switching away from the
 terminal pauses the game and dims the screen; switching back counts down and
@@ -39,6 +40,18 @@ with wall kicks, a level every ten lines.
 | z | Rotate counter-clockwise |
 | ▼ | Tap to nudge down, hold to drop fast |
 | space | Slam |
+| p | Pause and resume |
+| enter | Start, back to the menu |
+| q | Quit |
+
+## snake
+
+A terminal at least 49 columns by 15 rows. The snake glides between cells,
+each meal adds two segments and a little speed, and the walls are solid.
+
+| Key | Action |
+|---|---|
+| ◀ ▶ ▲ ▼ | Turn (speed on the menu) |
 | p | Pause and resume |
 | enter | Start, back to the menu |
 | q | Quit |
