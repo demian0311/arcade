@@ -1,4 +1,4 @@
-module pilldoc
+module github.com/demian0311/pilldoc
 
 go 1.27.2
 
