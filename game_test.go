@@ -366,3 +366,13 @@ func TestRepeatPressConfirmsHold(t *testing.T) {
 		t.Fatal("a repeat press should confirm the hold")
 	}
 }
+
+func TestWideTerminalCentresTheBottle(t *testing.T) {
+	m := newModel()
+	mm, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
+	m = mm.(model)
+	board := m.blocks()[3]
+	if left, right := board.x, m.width-board.x-board.w; left != right && left != right+1 {
+		t.Fatalf("bottle is off centre: %d left, %d right", left, right)
+	}
+}

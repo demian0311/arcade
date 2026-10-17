@@ -183,12 +183,13 @@ func (m model) next() string {
 }
 
 // blocks fills the height with the bottle and hugs its left side with one
-// column: title, next pill, then the stats and note. The column and bottle
-// are centred together. Blocks are ordered left to right for compose.
+// column: title, next pill, then the stats and note. The bottle is centred
+// in the terminal when the column fits beside it; otherwise the column and
+// bottle are centred together. Blocks are ordered left to right for compose.
 func (m model) blocks() []block {
 	board := newBlock(frameStyle.Render(renderBoard(m.g, m.scale)))
 	colW := colWidth(m.scale, m.titleScale)
-	board.x = (m.width-colW-colPad-board.w)/2 + colW + colPad
+	board.x = max((m.width-board.w)/2, (m.width-colW-colPad-board.w)/2+colW+colPad)
 	board.y = (m.height - board.h()) / 2
 
 	title := newBlock(padStyle.Render(renderTitle(m.titleScale)))
