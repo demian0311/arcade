@@ -117,11 +117,16 @@ func TestAdvanceFallsThenLocksAfterRest(t *testing.T) {
 	if g.Advance(iv) || g.Pill.Y != BoardH-1 || g.Prog != 0 {
 		t.Fatalf("on the floor: y=%d prog=%.2f", g.Pill.Y, g.Prog)
 	}
-	lock := min(iv, maxLockDelay)
-	if g.Advance(lock / 2) {
+	if g.Advance(lockDelay / 2) {
 		t.Fatal("locked before the lock delay")
 	}
-	if !g.Advance(lock / 2) {
+	if !g.Move(1) || g.Rest != 0 {
+		t.Fatalf("a move while resting should restart the lock delay, rest=%v", g.Rest)
+	}
+	if g.Advance(lockDelay / 2) {
+		t.Fatal("locked before the restarted delay ran out")
+	}
+	if !g.Advance(lockDelay / 2) {
 		t.Fatal("did not lock after the lock delay")
 	}
 }

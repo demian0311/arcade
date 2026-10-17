@@ -31,7 +31,9 @@ const (
 	repeatSlack        = 60 * time.Millisecond
 	defaultRepeatDelay = 300 * time.Millisecond
 	maxRepeatDelay     = 700 * time.Millisecond
-	maxScale           = 4
+	// moveGap throttles horizontal auto-repeat, which arrives every 25 ms, to a pace a player can stop.
+	moveGap  = 60 * time.Millisecond
+	maxScale = 4
 )
 
 // tickMsg drives the pill, the clear flash and the drop cascade; the id discards stale ticks.
@@ -58,6 +60,7 @@ type model struct {
 	repeatDelay   time.Duration // measured gap from a fresh press to its first repeat
 	softUntil     time.Time     // soft drop runs until this moment, extended by each press
 	softBlocked   bool          // after a landing, soft drop waits for the down key to be released and pressed again
+	lastMove      time.Time
 	bg            *backdrop
 	lastBg        time.Time
 }
@@ -169,9 +172,9 @@ func (m model) key(k string) (tea.Model, tea.Cmd) {
 	case phaseFalling:
 		switch k {
 		case "left", "h":
-			m.g.Move(-1)
+			m.slide(-1, time.Now())
 		case "right", "l":
-			m.g.Move(1)
+			m.slide(1, time.Now())
 		case "up", "k", "x":
 			m.g.Rotate(true)
 		case "z":
@@ -214,6 +217,15 @@ func (m model) lock() (tea.Model, tea.Cmd) {
 	m.g.Lock()
 	m.softBlocked = true
 	return m.resolve()
+}
+
+// slide moves the pill sideways, ignoring presses that arrive faster than moveGap.
+func (m *model) slide(dx int, at time.Time) {
+	if at.Sub(m.lastMove) < moveGap {
+		return
+	}
+	m.lastMove = at
+	m.g.Move(dx)
 }
 
 // pressDown registers a down press. A fresh press opens a soft-drop window long

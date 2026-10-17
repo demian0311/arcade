@@ -120,14 +120,18 @@ type Game struct {
 	Combo   int // viruses cleared by the current pill, drives score doubling
 	rng     *rand.Rand
 
-	Prog float64       // how far the pill has fallen into the next row, 0 to 1
-	Rest time.Duration // how long the pill has sat on something
-	Soft bool          // fast drop, set by the down key, cleared when the pill lands
+	Prog       float64       // how far the pill has fallen into the next row, 0 to 1
+	Rest       time.Duration // how long the pill has sat on something
+	Soft       bool          // fast drop, set by the down key, cleared when the pill lands
+	lockResets int           // moves and turns that have restarted the lock delay for this pill
 }
 
 const (
 	softInterval = 45 * time.Millisecond
-	maxLockDelay = 400 * time.Millisecond
+	// lockDelay is how long a pill may sit on something before it locks, at any
+	// speed; a move or turn restarts it, up to maxLockResets times per pill.
+	lockDelay     = 350 * time.Millisecond
+	maxLockResets = 8
 )
 
 func NewGame(level int, speed Speed, seed int64) *Game {
@@ -204,7 +208,7 @@ func (g *Game) Spawn() bool {
 		return false
 	}
 	g.Pill = &p
-	g.Prog, g.Rest, g.Soft = 0, 0, false
+	g.Prog, g.Rest, g.Soft, g.lockResets = 0, 0, false, 0
 	return true
 }
 
@@ -220,7 +224,7 @@ func (g *Game) Advance(dt time.Duration) bool {
 	if !g.canFall() {
 		g.Prog = 0
 		g.Rest += dt
-		return g.Rest >= min(iv, maxLockDelay)
+		return g.Rest >= lockDelay
 	}
 	g.Rest = 0
 	g.Prog += float64(dt) / float64(iv)
@@ -248,24 +252,43 @@ func (g *Game) fits(p Pill) bool {
 	return g.Board.free(p.X, p.Y) && g.Board.free(x2, y2)
 }
 
+// Move slides the pill sideways. A pill drawn more than half way into the next
+// row is treated as being there, so it can tuck under an overhang it is visually
+// already below; failing that it moves in its logical row and snaps flush.
 func (g *Game) Move(dx int) bool {
 	if g.Pill == nil {
 		return false
 	}
-	p := *g.Pill
-	p.X += dx
-	if !g.fits(p) {
-		return false
+	rows := []int{0}
+	if g.Prog >= 0.5 {
+		rows = []int{1, 0}
 	}
-	*g.Pill = p
-	g.settle()
-	return true
+	for _, dy := range rows {
+		p := *g.Pill
+		p.X += dx
+		p.Y += dy
+		if !g.fits(p) {
+			continue
+		}
+		*g.Pill = p
+		if dy == 1 {
+			g.Prog = 0
+		}
+		g.settle()
+		return true
+	}
+	return false
 }
 
-// settle snaps a pill that now hangs over a block flush with the row it is in.
+// settle snaps a pill that now hangs over a block flush with the row it is in,
+// and restarts the lock delay so the player can keep adjusting it.
 func (g *Game) settle() {
 	if !g.canFall() {
 		g.Prog = 0
+	}
+	if g.lockResets < maxLockResets {
+		g.Rest = 0
+		g.lockResets++
 	}
 }
 
