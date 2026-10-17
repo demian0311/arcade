@@ -27,8 +27,7 @@ const (
 	clearDelay = 200 * time.Millisecond // matched cells flash before they vanish
 	dropDelay  = 50 * time.Millisecond  // one row of cascade
 	// moveGap throttles horizontal auto-repeat, which arrives every 25 ms, to a pace a player can stop.
-	moveGap  = 60 * time.Millisecond
-	maxScale = 4
+	moveGap = 60 * time.Millisecond
 )
 
 // bgMsg drives the backdrop animation on its own clock.
@@ -45,7 +44,7 @@ type model struct {
 	level         int
 	speed         Speed
 	width, height int
-	scale         int
+	geom          geom
 	titleScale    int
 	lastFrame     time.Time
 	bg            *backdrop.Backdrop
@@ -94,36 +93,45 @@ func (m *model) frame() tea.Cmd {
 	return m.ticker.Tick(frameDelay)
 }
 
-// fitScale picks the largest board scale whose framed bottle fits the
-// terminal height, then the largest title scale whose side column fits the
-// width, down to the plain-text title at 0. A title that leaves room to
-// centre the bottle wins over a larger one that would push it aside. Both
-// are 0 when nothing fits.
-func fitScale(w, h int) (s, ts int) {
-	for s = maxScale; s >= 1; s-- {
-		if boardRows(s) > h {
+// fitScale picks the geometry with the tallest cells whose framed bottle
+// fits the terminal, braille winning a tie, then the largest title scale
+// whose side column fits the width, down to the plain-text title at 0. A
+// title that leaves room to centre the bottle wins over a larger one that
+// would push it aside. The geometry is zero when nothing fits.
+func fitScale(w, h int) (best geom, ts int) {
+	bestTS := 0
+	for _, g := range geoms {
+		if boardRows(g) > h || g.cellRows() < best.cellRows() || (g.cellRows() == best.cellRows() && g.pixel) {
 			continue
 		}
-		for _, mirrored := range []bool{true, false} {
-			for ts = layout.MaxTitleScale; ts >= 0; ts-- {
-				need := layoutWidth(s, ts)
-				if mirrored {
-					need += colWidth(s, ts) + colPad
-				}
-				if need <= w && sideRows(s, ts) <= boardRows(s) {
-					return s, ts
-				}
+		if t, ok := fitTitle(g, w); ok {
+			best, bestTS = g, t
+		}
+	}
+	return best, bestTS
+}
+
+// fitTitle picks the title scale for geometry g in a terminal w wide.
+func fitTitle(g geom, w int) (int, bool) {
+	for _, mirrored := range []bool{true, false} {
+		for ts := layout.MaxTitleScale; ts >= 0; ts-- {
+			need := layoutWidth(g, ts)
+			if mirrored {
+				need += colWidth(g, ts) + colPad
+			}
+			if need <= w && sideRows(g, ts) <= boardRows(g) {
+				return ts, true
 			}
 		}
 	}
-	return 0, 0
+	return 0, false
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
-		m.scale, m.titleScale = fitScale(msg.Width, msg.Height)
+		m.geom, m.titleScale = fitScale(msg.Width, msg.Height)
 		m.bg.Resize(msg.Width, msg.Height)
 		return m, nil
 	case tea.BlurMsg:

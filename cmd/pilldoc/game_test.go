@@ -188,8 +188,8 @@ func TestViewFitsTerminal(t *testing.T) {
 		m := newModel()
 		mm, _ := m.Update(tea.WindowSizeMsg{Width: sz[0], Height: sz[1]})
 		m = mm.(model)
-		if m.scale < 1 {
-			t.Fatalf("%v: scale %d", sz, m.scale)
+		if m.geom.n == 0 {
+			t.Fatalf("%v: nothing fits", sz)
 		}
 		v := m.View()
 		if rows := strings.Count(v, "\n") + 1; rows != sz[1] {
@@ -311,5 +311,23 @@ func TestWideTerminalCentresTheBottle(t *testing.T) {
 	board := m.blocks()[3]
 	if left, right := board.X, m.width-board.X-board.W; left != right && left != right+1 {
 		t.Fatalf("bottle is off centre: %d left, %d right", left, right)
+	}
+}
+
+func TestFitPicksTheTallestCells(t *testing.T) {
+	for _, c := range []struct {
+		w, h  int
+		pixel bool
+		n     int
+	}{
+		{88, 29, true, 3},   // pixels fill the gap between braille steps
+		{120, 40, false, 8}, // a tie goes to braille
+		{120, 45, true, 5},
+		{34, 18, false, 4},
+	} {
+		g, _ := fitScale(c.w, c.h)
+		if g.pixel != c.pixel || g.n != c.n {
+			t.Fatalf("%dx%d: pixel %v n %d", c.w, c.h, g.pixel, g.n)
+		}
 	}
 }

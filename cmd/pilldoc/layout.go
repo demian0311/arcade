@@ -26,27 +26,27 @@ var titleInks = []canvas.Ink{canvas.Ink(Red), canvas.Ink(Yellow), canvas.Ink(Blu
 func titleWidth(ts int) int  { return layout.TitleWidth(titleText, ts) }
 func titleHeight(ts int) int { return layout.TitleHeight(titleText, ts) }
 
-// boardRows and boardCols are the framed board's size at scale s.
-func boardRows(s int) int { return BoardH*s + 2 }
-func boardCols(s int) int { return BoardW*2*s + 2 }
+// boardRows and boardCols are the framed board's size.
+func boardRows(g geom) int { return g.rows(BoardH) + 2 }
+func boardCols(g geom) int { return g.cols(BoardW) + 2 }
 
-// nextW is the padded NEXT line at scale s.
-func nextW(s int) int { return 8 + 4*s }
+// nextW is the padded NEXT line: label, two spaces, a two-cell pill.
+func nextW(g geom) int { return 8 + g.cols(2) }
 
-// colWidth is the width of the side column at board scale s and title scale ts.
-func colWidth(s, ts int) int {
-	return max(titleWidth(ts)+2, nextW(s), statsW)
+// colWidth is the width of the side column at board geometry g and title scale ts.
+func colWidth(g geom, ts int) int {
+	return max(titleWidth(ts)+2, nextW(g), statsW)
 }
 
 // layoutWidth is the columns the side-by-side layout needs.
-func layoutWidth(s, ts int) int {
-	return colWidth(s, ts) + colPad + boardCols(s)
+func layoutWidth(g geom, ts int) int {
+	return colWidth(g, ts) + colPad + boardCols(g)
 }
 
 // sideRows is the rows the side column needs: title, next pill and stats,
 // each separated by a blank row.
-func sideRows(s, ts int) int {
-	return titleHeight(ts) + 1 + s + 1 + statRows
+func sideRows(g geom, ts int) int {
+	return titleHeight(ts) + 1 + g.rows(1) + 1 + statRows
 }
 
 // stats lists the counters and, under them, the note for the current phase.
@@ -82,7 +82,7 @@ func (m model) note() string {
 }
 
 func (m model) next() string {
-	return layout.Pad.Render(lipgloss.JoinHorizontal(lipgloss.Center, layout.Label.Render("NEXT"), "  ", renderNext(m.g.Next, m.scale)))
+	return layout.Pad.Render(lipgloss.JoinHorizontal(lipgloss.Center, layout.Label.Render("NEXT"), "  ", renderNext(m.g.Next, m.geom)))
 }
 
 // blocks fills the height with the bottle and hugs its left side with one
@@ -90,8 +90,8 @@ func (m model) next() string {
 // in the terminal when the column fits beside it; otherwise the column and
 // bottle are centred together. Blocks are ordered left to right for Compose.
 func (m model) blocks() []layout.Block {
-	board := layout.NewBlock(layout.Frame.Render(renderBoard(m.g, m.scale)))
-	colW := colWidth(m.scale, m.titleScale)
+	board := layout.NewBlock(layout.Frame.Render(renderBoard(m.g, m.geom)))
+	colW := colWidth(m.geom, m.titleScale)
 	board.X = (m.width - board.W) / 2
 	if board.X < colW+colPad {
 		board.X = (m.width-colW-colPad-board.W)/2 + colW + colPad
@@ -113,8 +113,9 @@ func (m model) View() string {
 	if m.width == 0 {
 		return ""
 	}
-	if m.scale < 1 {
-		need := fmt.Sprintf("pilldoc needs %dx%d, have %dx%d", layoutWidth(1, 0), boardRows(1), m.width, m.height)
+	if m.geom.n == 0 {
+		least := geoms[0]
+		need := fmt.Sprintf("pilldoc needs %dx%d, have %dx%d", layoutWidth(least, 0), boardRows(least), m.width, m.height)
 		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, need)
 	}
 	v := layout.Compose(m.bg, m.width, m.height, m.blocks())
