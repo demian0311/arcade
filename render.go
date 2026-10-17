@@ -56,12 +56,16 @@ func (c *canvas) set(x, y int, i ink) {
 
 // drawCell paints one board cell at (cx,cy) in board coordinates.
 func (c *canvas) drawCell(cx, cy, s int, cell Cell) {
+	c.drawAt(cx*4*s, cy*4*s, s, cell)
+}
+
+// drawAt paints a cell with its top-left corner at dot (ox,oy).
+func (c *canvas) drawAt(ox, oy, s int, cell Cell) {
 	if cell.Kind == Empty {
 		return
 	}
 	i := inkFor(cell)
 	n := 4 * s
-	ox, oy := cx*n, cy*n
 	gap := 0
 	if s >= 2 {
 		gap = 1
@@ -177,12 +181,12 @@ func renderBoard(g *Game, s int) string {
 		}
 	}
 	if p := g.Pill; p != nil {
+		n := 4 * s
+		off := int(g.Prog * float64(n)) // sub-cell fall, in dots
 		l0, l1 := p.links()
 		x2, y2 := p.Second()
-		c.drawCell(p.X, p.Y, s, Cell{Kind: Half, Color: p.C[0], Link: l0})
-		if y2 >= 0 {
-			c.drawCell(x2, y2, s, Cell{Kind: Half, Color: p.C[1], Link: l1})
-		}
+		c.drawAt(p.X*n, p.Y*n+off, s, Cell{Kind: Half, Color: p.C[0], Link: l0})
+		c.drawAt(x2*n, y2*n+off, s, Cell{Kind: Half, Color: p.C[1], Link: l1})
 	}
 	return c.String()
 }

@@ -3,8 +3,10 @@ package main
 import (
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 func emptyGame() *Game {
@@ -102,8 +104,72 @@ func TestDropStepMovesPairsTogether(t *testing.T) {
 	}
 }
 
+func TestAdvanceFallsThenLocksAfterRest(t *testing.T) {
+	g := emptyGame()
+	g.Pill = &Pill{X: 0, Y: BoardH - 3, C: [2]Color{Red, Blue}}
+	iv := g.Interval()
+	if g.Advance(iv/2) || g.Pill.Y != BoardH-3 || g.Prog < 0.49 {
+		t.Fatalf("half an interval: y=%d prog=%.2f", g.Pill.Y, g.Prog)
+	}
+	if g.Advance(iv/2) || g.Pill.Y != BoardH-2 {
+		t.Fatalf("one interval should fall one row, y=%d", g.Pill.Y)
+	}
+	if g.Advance(iv) || g.Pill.Y != BoardH-1 || g.Prog != 0 {
+		t.Fatalf("on the floor: y=%d prog=%.2f", g.Pill.Y, g.Prog)
+	}
+	lock := min(iv, maxLockDelay)
+	if g.Advance(lock / 2) {
+		t.Fatal("locked before the lock delay")
+	}
+	if !g.Advance(lock / 2) {
+		t.Fatal("did not lock after the lock delay")
+	}
+}
+
+func TestSoftDropResetsOnLock(t *testing.T) {
+	g := emptyGame()
+	g.Pill = &Pill{X: 0, Y: 0, C: [2]Color{Red, Blue}}
+	g.Soft = true
+	for !g.Advance(softInterval) {
+	}
+	if g.Pill.Y != BoardH-1 {
+		t.Fatalf("soft drop stopped at y=%d", g.Pill.Y)
+	}
+	g.Lock()
+	if g.Soft || g.Prog != 0 {
+		t.Fatalf("soft=%v prog=%.2f after lock", g.Soft, g.Prog)
+	}
+}
+
+func TestBackdropCoversTerminal(t *testing.T) {
+	b := &backdrop{}
+	b.resize(60, 20)
+	b.step(time.Second)
+	if len(b.lines) != 20 {
+		t.Fatalf("%d lines", len(b.lines))
+	}
+	dots := 0
+	for _, l := range b.lines {
+		if n := len([]rune(l)); n != 60 {
+			t.Fatalf("line width %d", n)
+		}
+		for _, r := range l {
+			if r != ' ' {
+				dots++
+			}
+		}
+	}
+	if dots == 0 {
+		t.Fatal("backdrop is blank")
+	}
+	b.flare(Red)
+	if b.style().GetForeground() == (&backdrop{t: b.t}).style().GetForeground() {
+		t.Fatal("flare did not change the tint")
+	}
+}
+
 func TestViewFitsTerminal(t *testing.T) {
-	for _, sz := range [][2]int{{44, 18}, {80, 24}, {120, 40}, {200, 70}} {
+	for _, sz := range [][2]int{{46, 18}, {80, 24}, {120, 40}, {200, 70}} {
 		m := newModel()
 		mm, _ := m.Update(tea.WindowSizeMsg{Width: sz[0], Height: sz[1]})
 		m = mm.(model)
@@ -111,8 +177,13 @@ func TestViewFitsTerminal(t *testing.T) {
 			t.Fatalf("%v: scale %d", sz, m.scale)
 		}
 		v := m.View()
-		if rows := strings.Count(v, "\n") + 1; rows > sz[1] {
+		if rows := strings.Count(v, "\n") + 1; rows != sz[1] {
 			t.Fatalf("%v: view has %d rows", sz, rows)
+		}
+		for i, l := range strings.Split(v, "\n") {
+			if w := lipgloss.Width(l); w != sz[0] {
+				t.Fatalf("%v: row %d is %d wide", sz, i, w)
+			}
 		}
 		if testing.Verbose() && sz[0] == 80 {
 			t.Logf("\n%s", v)

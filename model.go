@@ -22,14 +22,22 @@ const (
 )
 
 const (
+	frameDelay = 33 * time.Millisecond // falling-pill animation rate
 	clearDelay = 350 * time.Millisecond
 	dropDelay  = 90 * time.Millisecond
 	sidebarW   = 24
+	chromeW    = 6 // bottle border, gap to the sidebar, outer padding
 	maxScale   = 4
 )
 
-// tickMsg drives gravity, the clear flash and the drop cascade; the id discards stale ticks.
-type tickMsg struct{ id int }
+// tickMsg drives the pill, the clear flash and the drop cascade; the id discards stale ticks.
+type tickMsg struct {
+	id int
+	at time.Time
+}
+
+// bgMsg drives the backdrop animation on its own clock.
+type bgMsg struct{ at time.Time }
 
 type model struct {
 	g             *Game
@@ -39,25 +47,38 @@ type model struct {
 	width, height int
 	scale         int
 	tickID        int
+	lastFrame     time.Time
+	bg            *backdrop
+	lastBg        time.Time
 }
 
 func newModel() model {
-	m := model{speed: Med}
+	m := model{speed: Med, bg: &backdrop{}}
 	m.g = NewGame(m.level, m.speed, time.Now().UnixNano())
 	return m
 }
 
-func (m model) Init() tea.Cmd { return nil }
+func (m model) Init() tea.Cmd { return bgTick() }
+
+func bgTick() tea.Cmd {
+	return tea.Tick(bgFrame, func(t time.Time) tea.Msg { return bgMsg{t} })
+}
 
 func (m *model) tick(d time.Duration) tea.Cmd {
 	m.tickID++
 	id := m.tickID
-	return tea.Tick(d, func(time.Time) tea.Msg { return tickMsg{id} })
+	return tea.Tick(d, func(t time.Time) tea.Msg { return tickMsg{id, t} })
+}
+
+// frame schedules the next pill animation frame and marks when the previous one was.
+func (m *model) frame() tea.Cmd {
+	m.lastFrame = time.Now()
+	return m.tick(frameDelay)
 }
 
 // fitScale picks the largest cell scale whose board and sidebar fit the terminal.
 func fitScale(w, h int) int {
-	s := min((h-2)/BoardH, (w-4-sidebarW)/(BoardW*2))
+	s := min((h-2)/BoardH, (w-chromeW-sidebarW)/(BoardW*2))
 	return min(s, maxScale)
 }
 
@@ -66,20 +87,30 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		m.scale = fitScale(msg.Width, msg.Height)
+		m.bg.resize(msg.Width, msg.Height)
 		return m, nil
 	case tea.KeyMsg:
 		return m.key(msg.String())
+	case bgMsg:
+		if !m.lastBg.IsZero() {
+			m.bg.step(msg.at.Sub(m.lastBg))
+		}
+		m.lastBg = msg.at
+		return m, bgTick()
 	case tickMsg:
 		if msg.id != m.tickID {
 			return m, nil
 		}
 		switch m.phase {
 		case phaseFalling:
-			if m.g.Fall() {
-				return m, m.tick(m.g.Interval())
+			dt := msg.at.Sub(m.lastFrame)
+			m.lastFrame = msg.at
+			if m.g.Advance(dt) {
+				return m.lock()
 			}
-			return m.lock()
+			return m, m.tick(frameDelay)
 		case phaseClearing:
+			m.bg.flare(m.g.clearingColor())
 			m.g.Clear()
 			m.phase = phaseDropping
 			return m, m.tick(dropDelay)
@@ -125,10 +156,7 @@ func (m model) key(k string) (tea.Model, tea.Cmd) {
 		case "z":
 			m.g.Rotate(false)
 		case "down", "j":
-			if !m.g.Fall() {
-				return m.lock()
-			}
-			return m, m.tick(m.g.Interval())
+			m.g.Soft = true
 		case " ":
 			for m.g.Fall() {
 			}
@@ -139,7 +167,7 @@ func (m model) key(k string) (tea.Model, tea.Cmd) {
 	case phasePaused:
 		if k == "p" {
 			m.phase = phaseFalling
-			return m, m.tick(m.g.Interval())
+			return m, m.frame()
 		}
 	case phaseLevelClear:
 		if k == "enter" {
@@ -181,7 +209,7 @@ func (m model) resolve() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.phase = phaseFalling
-	return m, m.tick(m.g.Interval())
+	return m, m.frame()
 }
 
 var (
@@ -198,12 +226,37 @@ func (m model) View() string {
 		return ""
 	}
 	if m.scale < 1 {
-		need := fmt.Sprintf("pilldoc needs %dx%d, have %dx%d", BoardW*2+4+sidebarW, BoardH+2, m.width, m.height)
+		need := fmt.Sprintf("pilldoc needs %dx%d, have %dx%d", BoardW*2+chromeW+sidebarW, BoardH+2, m.width, m.height)
 		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, need)
 	}
 	frame := frameStyle.Render(renderBoard(m.g, m.scale))
-	content := lipgloss.JoinHorizontal(lipgloss.Top, frame, "  ", m.sidebar())
-	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, content)
+	content := lipgloss.NewStyle().Padding(0, 1).Render(lipgloss.JoinHorizontal(lipgloss.Top, frame, "  ", m.sidebar()))
+	return m.compose(content)
+}
+
+// compose centres the game over the backdrop; the game block is opaque, the field shows around it.
+func (m model) compose(content string) string {
+	lines := strings.Split(content, "\n")
+	cw, ch := lipgloss.Width(content), len(lines)
+	x0, y0 := max(0, (m.width-cw)/2), max(0, (m.height-ch)/2)
+	m.bg.resize(m.width, m.height)
+	st := m.bg.style()
+	var out strings.Builder
+	for row := 0; row < m.height; row++ {
+		if row >= y0 && row < y0+ch {
+			left, right := m.bg.line(row, x0, x0+cw)
+			out.WriteString(st.Render(left))
+			out.WriteString(lines[row-y0])
+			out.WriteString(st.Render(right))
+		} else {
+			left, _ := m.bg.line(row, m.width, m.width)
+			out.WriteString(st.Render(left))
+		}
+		if row < m.height-1 {
+			out.WriteByte('\n')
+		}
+	}
+	return out.String()
 }
 
 func (m model) sidebar() string {

@@ -119,7 +119,16 @@ type Game struct {
 	Next    Pill
 	Combo   int // viruses cleared by the current pill, drives score doubling
 	rng     *rand.Rand
+
+	Prog float64       // how far the pill has fallen into the next row, 0 to 1
+	Rest time.Duration // how long the pill has sat on something
+	Soft bool          // fast drop, set by the down key, cleared when the pill lands
 }
+
+const (
+	softInterval = 45 * time.Millisecond
+	maxLockDelay = 400 * time.Millisecond
+)
 
 func NewGame(level int, speed Speed, seed int64) *Game {
 	level = max(0, min(level, MaxLevel))
@@ -195,7 +204,43 @@ func (g *Game) Spawn() bool {
 		return false
 	}
 	g.Pill = &p
+	g.Prog, g.Rest, g.Soft = 0, 0, false
 	return true
+}
+
+// Advance moves time forward for the falling pill. It returns true when the pill has landed.
+func (g *Game) Advance(dt time.Duration) bool {
+	if g.Pill == nil {
+		return false
+	}
+	iv := g.Interval()
+	if g.Soft {
+		iv = softInterval
+	}
+	if !g.canFall() {
+		g.Prog = 0
+		g.Rest += dt
+		return g.Rest >= min(iv, maxLockDelay)
+	}
+	g.Rest = 0
+	g.Prog += float64(dt) / float64(iv)
+	for g.Prog >= 1 {
+		if !g.Fall() {
+			g.Prog = 0
+			break
+		}
+		g.Prog--
+	}
+	if !g.canFall() {
+		g.Prog = 0
+	}
+	return false
+}
+
+func (g *Game) canFall() bool {
+	p := *g.Pill
+	p.Y++
+	return g.fits(p)
 }
 
 func (g *Game) fits(p Pill) bool {
@@ -213,7 +258,15 @@ func (g *Game) Move(dx int) bool {
 		return false
 	}
 	*g.Pill = p
+	g.settle()
 	return true
+}
+
+// settle snaps a pill that now hangs over a block flush with the row it is in.
+func (g *Game) settle() {
+	if !g.canFall() {
+		g.Prog = 0
+	}
 }
 
 // Fall moves the pill down one row. It returns false when the pill rests on something.
@@ -249,12 +302,14 @@ func (g *Game) Rotate(cw bool) bool {
 	}
 	if g.fits(p) {
 		*g.Pill = p
+		g.settle()
 		return true
 	}
 	if !p.Vertical {
 		p.X--
 		if g.fits(p) {
 			*g.Pill = p
+			g.settle()
 			return true
 		}
 	}
@@ -275,6 +330,7 @@ func (g *Game) Lock() {
 	g.set(p.X, p.Y, Cell{Kind: Half, Color: p.C[0], Link: l0})
 	g.set(x2, y2, Cell{Kind: Half, Color: p.C[1], Link: l1})
 	g.Pill = nil
+	g.Prog, g.Rest, g.Soft = 0, 0, false
 }
 
 func (g *Game) set(x, y int, c Cell) {
@@ -326,6 +382,18 @@ func (g *Game) MarkMatches() int {
 		}
 	}
 	return marked
+}
+
+// clearingColor is the colour of the first flagged cell, for the backdrop flare.
+func (g *Game) clearingColor() Color {
+	for y := range g.Board {
+		for x := range g.Board[y] {
+			if g.Board[y][x].Clearing {
+				return g.Board[y][x].Color
+			}
+		}
+	}
+	return None
 }
 
 // Clear removes flagged cells, orphans their partners and scores the viruses.
