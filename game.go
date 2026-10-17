@@ -135,8 +135,9 @@ const (
 	tapSoftDivisor = 3
 	// lockDelay is how long a pill may sit on something before it locks when it
 	// landed under gravity; a move or turn restarts it, up to maxLockResets times
-	// per pill. A pill driven down by soft drop locks the moment it lands.
+	// per pill. A pill driven down by soft drop gets only softLockDelay.
 	lockDelay     = 350 * time.Millisecond
+	softLockDelay = 150 * time.Millisecond
 	maxLockResets = 8
 )
 
@@ -232,10 +233,10 @@ func (g *Game) Advance(dt time.Duration) bool {
 	}
 	if !g.canFall() {
 		g.Prog = 0
-		if g.Soft {
-			return true
-		}
 		g.Rest += dt
+		if g.Soft {
+			return g.Rest >= softLockDelay
+		}
 		return g.Rest >= lockDelay
 	}
 	g.Rest = 0
