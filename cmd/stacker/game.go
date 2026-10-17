@@ -156,8 +156,8 @@ type Game struct {
 }
 
 const (
-	softInterval   = 45 * time.Millisecond
-	tapSoftDivisor = 3
+	softInterval   = 25 * time.Millisecond
+	tapSoftDivisor = 6
 	lockDelay      = 350 * time.Millisecond
 	softLockDelay  = 150 * time.Millisecond
 	maxLockResets  = 8
