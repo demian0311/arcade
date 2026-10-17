@@ -73,6 +73,52 @@ func segment(c *canvas.Canvas, p Point, s int, l links, i canvas.Ink, from Dir, 
 	c.Tile(ox, oy, w, h, max(1, n/4), l.corners(), i)
 }
 
+// drawHead paints the head as a snout: the head cell plus its advance into
+// the next cell, with the leading corners rounded to a half circle and two
+// eyes punched out just behind the nose.
+func drawHead(c *canvas.Canvas, g *Game, s, off int, i canvas.Ink) {
+	n := 4 * s
+	p := g.Head()
+	ox, oy, w, h := p.X*n, p.Y*n, n, n
+	var round canvas.Corners
+	switch g.Dir {
+	case Right:
+		w += off
+		round = canvas.Corners{TR: true, BR: true}
+	case Left:
+		ox, w = ox-off, w+off
+		round = canvas.Corners{TL: true, BL: true}
+	case Down:
+		h += off
+		round = canvas.Corners{BL: true, BR: true}
+	case Up:
+		oy, h = oy-off, h+off
+		round = canvas.Corners{TL: true, TR: true}
+	}
+	c.Tile(ox, oy, w, h, n/2, round, i)
+
+	e := max(1, n/8) // eye size in dots
+	back, side := n/2, n/4 // eyes sit in the solid part of the head, not the tapering nose
+	var eyes [2]Point
+	switch g.Dir {
+	case Right:
+		eyes = [2]Point{{ox + w - back - e, oy + side}, {ox + w - back - e, oy + h - side - e}}
+	case Left:
+		eyes = [2]Point{{ox + back, oy + side}, {ox + back, oy + h - side - e}}
+	case Down:
+		eyes = [2]Point{{ox + side, oy + h - back - e}, {ox + w - side - e, oy + h - back - e}}
+	case Up:
+		eyes = [2]Point{{ox + side, oy + back}, {ox + w - side - e, oy + back}}
+	}
+	for _, eye := range eyes {
+		for dy := 0; dy < e; dy++ {
+			for dx := 0; dx < e; dx++ {
+				c.Set(eye.X+dx, eye.Y+dy, 0)
+			}
+		}
+	}
+}
+
 func dirTo(a, b Point) Dir {
 	switch {
 	case b.X > a.X:
@@ -103,17 +149,15 @@ func renderBoard(g *Game, s int) string {
 		if i < last {
 			l[dirTo(p, g.Body[i+1])] = true
 		}
-		ink := body
-		from, inset, to, extend := Right, 0, Right, 0
+		if i == 0 {
+			drawHead(c, g, s, off, head)
+			continue
+		}
+		from, inset := Right, 0
 		if i == last && !g.Growing() && !g.Dead {
 			from, inset = dirTo(p, g.Body[i-1]).opposite(), off
 		}
-		if i == 0 {
-			ink = head
-			l[g.Dir] = true
-			to, extend = g.Dir, off
-		}
-		segment(c, p, s, l, ink, from, inset, to, extend)
+		segment(c, p, s, l, body, from, inset, Right, 0)
 	}
 	segment(c, g.Food, s, links{}, inkFood, Right, 0, Right, 0)
 	return c.String()
