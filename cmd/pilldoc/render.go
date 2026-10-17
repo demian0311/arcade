@@ -35,19 +35,28 @@ var palette = canvas.Palette{
 	inkWhite:                      lipgloss.NewStyle().Foreground(lipgloss.Color("#ffffff")).Bold(true),
 }
 
-// drawCell paints one board cell at (cx,cy) in board coordinates.
-func drawCell(c canvas.Grid, g geom, cx, cy int, cell Cell) {
-	drawAt(c, g, cx*g.n, cy*g.n, cell)
+// Every board cell covers 4s x 4s dots at scale s, so cell edges fall on character edges.
+func newCanvas(cellsW, cellsH, s int) *canvas.Canvas {
+	return canvas.New(cellsW*4*s, cellsH*4*s, palette)
 }
 
-// drawAt paints a cell with its top-left corner at (ox,oy). The side that
+// drawCell paints one board cell at (cx,cy) in board coordinates.
+func drawCell(c *canvas.Canvas, cx, cy, s int, cell Cell) {
+	drawAt(c, cx*4*s, cy*4*s, s, cell)
+}
+
+// drawAt paints a cell with its top-left corner at dot (ox,oy). The side that
 // joins a partner half is square and butts against it; every other side is
-// rounded and, when the cell is big enough, leaves a dot of air.
-func drawAt(c canvas.Grid, g geom, ox, oy int, cell Cell) {
+// rounded and, from scale 2 up, leaves a dot of air.
+func drawAt(c *canvas.Canvas, ox, oy, s int, cell Cell) {
 	if cell.Kind == Empty {
 		return
 	}
-	n, gap := g.n, g.gap()
+	n := 4 * s
+	gap := 0
+	if s >= 2 {
+		gap = 1
+	}
 	w, h := n, n
 	if cell.Link != Right {
 		w -= gap
@@ -61,21 +70,15 @@ func drawAt(c canvas.Grid, g geom, ox, oy int, cell Cell) {
 		BL: cell.Link != Left && cell.Link != Down,
 		BR: cell.Link != Right && cell.Link != Down,
 	}
-	c.Tile(ox, oy, w, h, g.radius(cell.Kind), round, inkFor(cell))
+	c.Tile(ox, oy, w, h, max(1, n/4), round, inkFor(cell))
 	if cell.Kind == Virus {
 		face(c, ox, oy, w, h)
 	}
 }
 
 // face punches eyes and a mouth out of a filled virus body.
-func face(c canvas.Grid, ox, oy, w, h int) {
+func face(c *canvas.Canvas, ox, oy, w, h int) {
 	m := min(w, h)
-	if m < 4 {
-		// Too small for a mouth: two eyes on the middle row.
-		c.Set(ox, oy+m/2, 0)
-		c.Set(ox+w-1, oy+m/2, 0)
-		return
-	}
 	e := max(1, m/5)
 	eyeY, mouthY := m/3, m*2/3
 	ex1, ex2 := m/4, w-e-m/4
@@ -93,27 +96,27 @@ func face(c canvas.Grid, ox, oy, w, h int) {
 	}
 }
 
-func renderBoard(g *Game, gm geom) string {
-	c := gm.grid(BoardW, BoardH)
+func renderBoard(g *Game, s int) string {
+	c := newCanvas(BoardW, BoardH, s)
 	for y := 0; y < BoardH; y++ {
 		for x := 0; x < BoardW; x++ {
-			drawCell(c, gm, x, y, g.Board[y][x])
+			drawCell(c, x, y, s, g.Board[y][x])
 		}
 	}
 	if p := g.Pill; p != nil {
-		n := gm.n
-		off := int(g.Prog * float64(n)) // sub-cell fall
+		n := 4 * s
+		off := int(g.Prog * float64(n)) // sub-cell fall, in dots
 		l0, l1 := p.links()
 		x2, y2 := p.Second()
-		drawAt(c, gm, p.X*n, p.Y*n+off, Cell{Kind: Half, Color: p.C[0], Link: l0})
-		drawAt(c, gm, x2*n, y2*n+off, Cell{Kind: Half, Color: p.C[1], Link: l1})
+		drawAt(c, p.X*n, p.Y*n+off, s, Cell{Kind: Half, Color: p.C[0], Link: l0})
+		drawAt(c, x2*n, y2*n+off, s, Cell{Kind: Half, Color: p.C[1], Link: l1})
 	}
 	return c.String()
 }
 
-func renderNext(p Pill, gm geom) string {
-	c := gm.grid(2, 1)
-	drawCell(c, gm, 0, 0, Cell{Kind: Half, Color: p.C[0], Link: Right})
-	drawCell(c, gm, 1, 0, Cell{Kind: Half, Color: p.C[1], Link: Left})
+func renderNext(p Pill, s int) string {
+	c := newCanvas(2, 1, s)
+	drawCell(c, 0, 0, s, Cell{Kind: Half, Color: p.C[0], Link: Right})
+	drawCell(c, 1, 0, s, Cell{Kind: Half, Color: p.C[1], Link: Left})
 	return c.String()
 }

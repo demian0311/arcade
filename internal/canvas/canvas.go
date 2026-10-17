@@ -40,10 +40,6 @@ type Corners struct{ TL, TR, BL, BR bool }
 // Tile paints a w x h rectangle with its top-left dot at (ox,oy), cutting
 // each rounded corner back by radius r.
 func (c *Canvas) Tile(ox, oy, w, h, r int, round Corners, i Ink) {
-	tile(c.Set, ox, oy, w, h, r, round, i)
-}
-
-func tile(set func(x, y int, i Ink), ox, oy, w, h, r int, round Corners, i Ink) {
 	cut := func(x, y int) bool { return x < r && y < r && (r-1-x)+(r-1-y) >= r-1 }
 	for y := 0; y < h; y++ {
 		for x := 0; x < w; x++ {
@@ -54,17 +50,9 @@ func tile(set func(x, y int, i Ink), ox, oy, w, h, r int, round Corners, i Ink) 
 				round.BR && cut(w-1-x, h-1-y):
 				continue
 			}
-			set(ox+x, oy+y, i)
+			c.Set(ox+x, oy+y, i)
 		}
 	}
-}
-
-// A Grid is any surface a game can paint dots on: the braille Canvas or the
-// half-block Pixels.
-type Grid interface {
-	Set(x, y int, i Ink)
-	Tile(ox, oy, w, h, r int, round Corners, i Ink)
-	String() string
 }
 
 // BrailleBits maps a dot at (dx,dy) within a character to its bit in the
