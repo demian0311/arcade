@@ -7,6 +7,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/demian0311/arcade/internal/session"
 )
 
 func emptyGame() *Game {
@@ -170,75 +172,14 @@ func TestHeldDownDoesNotCarryToNextPill(t *testing.T) {
 	at := t0.Add(250 * time.Millisecond) // auto-repeat begins and keeps arriving every 25 ms
 	for i := 0; i < 20; i++ {
 		m.pressDown(at)
-		if m.softActive(at) {
+		if m.down.Active(at) {
 			t.Fatalf("held key must not soft-drop the new pill (repeat %d)", i)
 		}
 		at = at.Add(25 * time.Millisecond)
 	}
 	m.pressDown(at.Add(400 * time.Millisecond)) // release, then press again
-	if !m.softActive(at.Add(401 * time.Millisecond)) {
+	if !m.down.Active(at.Add(401 * time.Millisecond)) {
 		t.Fatal("re-press after a gap should soft-drop")
-	}
-}
-
-func TestHoldBridgesRepeatDelayAndReleaseEnds(t *testing.T) {
-	m := newModel()
-	t0 := time.Now()
-	m.pressDown(t0)
-	if !m.softActive(t0.Add(200 * time.Millisecond)) {
-		t.Fatal("a fresh press must stay soft across the repeat delay")
-	}
-	if m.softActive(t0.Add(defaultRepeatDelay + repeatSlack + time.Millisecond)) {
-		t.Fatal("a lone tap must end after the bridge window")
-	}
-	at := t0
-	for i := 0; i < 12; i++ { // the first repeat lands at 250 ms, then every 25 ms
-		if i == 0 {
-			at = at.Add(250 * time.Millisecond)
-		} else {
-			at = at.Add(25 * time.Millisecond)
-		}
-		m.pressDown(at)
-		if !m.softActive(at.Add(20 * time.Millisecond)) {
-			t.Fatalf("repeat %d should keep soft alive", i)
-		}
-	}
-	if m.repeatDelay != 250*time.Millisecond {
-		t.Fatalf("learned repeat delay %v", m.repeatDelay)
-	}
-	if m.softActive(at.Add(holdGap + time.Millisecond)) {
-		t.Fatal("soft should end once repeats stop")
-	}
-	m.pressDown(at.Add(500 * time.Millisecond))
-	if !m.softActive(at.Add(500*time.Millisecond + 250*time.Millisecond + repeatSlack - time.Millisecond)) {
-		t.Fatal("the next fresh press should use the learned delay")
-	}
-}
-
-func TestBackdropCoversTerminal(t *testing.T) {
-	b := &backdrop{}
-	b.resize(60, 20)
-	b.step(time.Second)
-	if len(b.lines) != 20 {
-		t.Fatalf("%d lines", len(b.lines))
-	}
-	dots := 0
-	for _, l := range b.lines {
-		if n := len([]rune(l)); n != 60 {
-			t.Fatalf("line width %d", n)
-		}
-		for _, r := range l {
-			if r != ' ' {
-				dots++
-			}
-		}
-	}
-	if dots == 0 {
-		t.Fatal("backdrop is blank")
-	}
-	b.flare(Red)
-	if b.style().GetForeground() == (&backdrop{t: b.t}).style().GetForeground() {
-		t.Fatal("flare did not change the tint")
 	}
 }
 
@@ -273,16 +214,16 @@ func TestBlurPausesAndFocusKeepsPaused(t *testing.T) {
 		m.phase = ph
 		mm, _ = m.Update(tea.BlurMsg{})
 		m = mm.(model)
-		if m.phase != phasePaused || !m.blurred {
-			t.Fatalf("from %d: phase %d blurred %v after blur", ph, m.phase, m.blurred)
+		if m.phase != phasePaused || !m.focus.Blurred {
+			t.Fatalf("from %d: phase %d blurred %v after blur", ph, m.phase, m.focus.Blurred)
 		}
 		if strings.Count(m.View(), "\n")+1 != 40 {
 			t.Fatal("faded view lost rows")
 		}
 		mm, _ = m.Update(tea.FocusMsg{})
 		m = mm.(model)
-		if m.phase != phasePaused || m.blurred {
-			t.Fatalf("focus should unfade but stay paused, phase %d blurred %v", m.phase, m.blurred)
+		if m.phase != phasePaused || m.focus.Blurred {
+			t.Fatalf("focus should unfade but stay paused, phase %d blurred %v", m.phase, m.focus.Blurred)
 		}
 		mm, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("p")})
 		m = mm.(model)
@@ -299,15 +240,15 @@ func TestFocusReturnCountsDownThenResumes(t *testing.T) {
 	m = mm.(model)
 	mm, cmd := m.Update(tea.FocusMsg{})
 	m = mm.(model)
-	if m.phase != phasePaused || m.countdown != countdownFrom || cmd == nil {
-		t.Fatalf("focus should start the countdown: phase %d countdown %d", m.phase, m.countdown)
+	if m.phase != phasePaused || m.focus.Countdown != session.CountdownFrom || cmd == nil {
+		t.Fatalf("focus should start the countdown: phase %d countdown %d", m.phase, m.focus.Countdown)
 	}
-	for i := countdownFrom; i > 0; i-- {
-		mm, _ = m.Update(countMsg{m.countID})
+	for i := session.CountdownFrom; i > 0; i-- {
+		mm, _ = m.Update(session.CountMsg{ID: m.focus.CountID()})
 		m = mm.(model)
 	}
-	if m.phase != phaseFalling || m.countdown != 0 || m.autoPaused {
-		t.Fatalf("countdown should resume play: phase %d countdown %d auto %v", m.phase, m.countdown, m.autoPaused)
+	if m.phase != phaseFalling || m.focus.Countdown != 0 {
+		t.Fatalf("countdown should resume play: phase %d countdown %d", m.phase, m.focus.Countdown)
 	}
 
 	// A manual pause is not undone by focus.
@@ -317,8 +258,8 @@ func TestFocusReturnCountsDownThenResumes(t *testing.T) {
 	m = mm.(model)
 	mm, _ = m.Update(tea.FocusMsg{})
 	m = mm.(model)
-	if m.phase != phasePaused || m.countdown != 0 {
-		t.Fatalf("manual pause should stay paused on focus: phase %d countdown %d", m.phase, m.countdown)
+	if m.phase != phasePaused || m.focus.Countdown != 0 {
+		t.Fatalf("manual pause should stay paused on focus: phase %d countdown %d", m.phase, m.focus.Countdown)
 	}
 
 	// A blur during the countdown cancels it.
@@ -327,13 +268,23 @@ func TestFocusReturnCountsDownThenResumes(t *testing.T) {
 	m = mm.(model)
 	mm, _ = m.Update(tea.FocusMsg{})
 	m = mm.(model)
-	id := m.countID
+	id := m.focus.CountID()
 	mm, _ = m.Update(tea.BlurMsg{})
 	m = mm.(model)
-	mm, _ = m.Update(countMsg{id})
+	mm, _ = m.Update(session.CountMsg{ID: id})
 	m = mm.(model)
 	if m.phase != phasePaused {
 		t.Fatal("a stale countdown step resumed a blurred game")
+	}
+
+	// On the menu after a game, a blur and focus must not resume the old game.
+	m.phase, m.resume = phaseMenu, phaseFalling
+	mm, _ = m.Update(tea.BlurMsg{})
+	m = mm.(model)
+	mm, cmd = m.Update(tea.FocusMsg{})
+	m = mm.(model)
+	if m.phase != phaseMenu || cmd != nil {
+		t.Fatalf("menu should stay on focus: phase %d", m.phase)
 	}
 }
 
@@ -341,7 +292,7 @@ func TestTapSoftDropIsSlowerThanHold(t *testing.T) {
 	g := emptyGame()
 	g.Pill = &Pill{X: 0, Y: 0, C: [2]Color{Red, Blue}}
 	g.Soft = true
-	g.Advance(defaultRepeatDelay + repeatSlack)
+	g.Advance(session.DefaultRepeatDelay + session.RepeatSlack)
 	if g.Pill.Y > 3 {
 		t.Fatalf("a tap window fell %d rows", g.Pill.Y)
 	}
@@ -353,26 +304,12 @@ func TestTapSoftDropIsSlowerThanHold(t *testing.T) {
 	}
 }
 
-func TestRepeatPressConfirmsHold(t *testing.T) {
-	m := newModel()
-	m.phase = phaseFalling
-	at := time.Now()
-	m.pressDown(at)
-	if m.softHeld {
-		t.Fatal("a fresh press is not a hold")
-	}
-	m.pressDown(at.Add(defaultRepeatDelay))
-	if !m.softHeld {
-		t.Fatal("a repeat press should confirm the hold")
-	}
-}
-
 func TestWideTerminalCentresTheBottle(t *testing.T) {
 	m := newModel()
 	mm, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 40})
 	m = mm.(model)
 	board := m.blocks()[3]
-	if left, right := board.x, m.width-board.x-board.w; left != right && left != right+1 {
+	if left, right := board.X, m.width-board.X-board.W; left != right && left != right+1 {
 		t.Fatalf("bottle is off centre: %d left, %d right", left, right)
 	}
 }

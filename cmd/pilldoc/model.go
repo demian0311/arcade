@@ -4,6 +4,10 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/demian0311/arcade/internal/backdrop"
+	"github.com/demian0311/arcade/internal/layout"
+	"github.com/demian0311/arcade/internal/session"
 )
 
 type phase int
@@ -22,65 +26,34 @@ const (
 	frameDelay = 33 * time.Millisecond  // falling-pill animation rate
 	clearDelay = 200 * time.Millisecond // matched cells flash before they vanish
 	dropDelay  = 50 * time.Millisecond  // one row of cascade
-	// Terminals send no key-up, so a held key is one press, a pause (the repeat
-	// delay, 250 ms on Hyprland's default), then auto-repeat presses 25 ms apart.
-	// holdGap is how long a repeat press keeps the key counted as held; a longer
-	// gap means it was released. A fresh press keeps it held for the learned
-	// repeat delay plus repeatSlack, so a hold does not stutter before repeats start.
-	holdGap            = 100 * time.Millisecond
-	repeatSlack        = 60 * time.Millisecond
-	defaultRepeatDelay = 300 * time.Millisecond
-	maxRepeatDelay     = 700 * time.Millisecond
 	// moveGap throttles horizontal auto-repeat, which arrives every 25 ms, to a pace a player can stop.
 	moveGap  = 60 * time.Millisecond
 	maxScale = 4
 )
 
-// tickMsg drives the pill, the clear flash and the drop cascade; the id discards stale ticks.
-type tickMsg struct {
-	id int
-	at time.Time
-}
-
 // bgMsg drives the backdrop animation on its own clock.
 type bgMsg struct{ at time.Time }
-
-// countMsg steps the resume countdown after a focus return; the id discards stale steps.
-type countMsg struct{ id int }
-
-const (
-	countdownFrom = 3
-	countdownStep = 700 * time.Millisecond
-)
 
 type model struct {
 	g             *Game
 	phase         phase
 	resume        phase // the phase a pause returns to
-	blurred       bool  // the terminal lost focus; the view fades and play pauses
-	autoPaused    bool  // the pause came from a blur, so focus resumes play after a countdown
-	countdown     int   // seconds left before an auto-paused game resumes, 0 when not counting
-	countID       int
+	focus         session.Focus
+	down          session.Hold
+	slideGate     session.Throttle
+	ticker        session.Ticker
 	level         int
 	speed         Speed
 	width, height int
 	scale         int
 	titleScale    int
-	tickID        int
 	lastFrame     time.Time
-	lastDown      time.Time
-	lastFresh     bool          // the previous down press began a hold
-	softHeld      bool          // auto-repeat has confirmed the down key is held
-	repeatDelay   time.Duration // measured gap from a fresh press to its first repeat
-	softUntil     time.Time     // soft drop runs until this moment, extended by each press
-	softBlocked   bool          // after a landing, soft drop waits for the down key to be released and pressed again
-	lastMove      time.Time
-	bg            *backdrop
+	bg            *backdrop.Backdrop
 	lastBg        time.Time
 }
 
 func newModel() model {
-	m := model{speed: Med, bg: &backdrop{}, repeatDelay: defaultRepeatDelay}
+	m := model{speed: Med, bg: &backdrop.Backdrop{}, slideGate: session.Throttle{Gap: moveGap}}
 	m.g = NewGame(m.level, m.speed, time.Now().UnixNano())
 	return m
 }
@@ -88,38 +61,29 @@ func newModel() model {
 func (m model) Init() tea.Cmd { return bgTick() }
 
 func bgTick() tea.Cmd {
-	return tea.Tick(bgFrame, func(t time.Time) tea.Msg { return bgMsg{t} })
+	return tea.Tick(backdrop.Frame, func(t time.Time) tea.Msg { return bgMsg{t} })
 }
 
-func (m *model) tick(d time.Duration) tea.Cmd {
-	m.tickID++
-	id := m.tickID
-	return tea.Tick(d, func(t time.Time) tea.Msg { return tickMsg{id, t} })
+func (m model) running() bool {
+	return m.phase == phaseFalling || m.phase == phaseClearing || m.phase == phaseDropping
 }
 
 // pause stops play in any running phase and remembers where to resume.
 func (m *model) pause() {
-	switch m.phase {
-	case phaseFalling, phaseClearing, phaseDropping:
+	if m.running() {
 		m.resume, m.phase = m.phase, phasePaused
 	}
 }
 
-// count schedules the next countdown step.
-func (m *model) count() tea.Cmd {
-	m.countID++
-	id := m.countID
-	return tea.Tick(countdownStep, func(time.Time) tea.Msg { return countMsg{id} })
-}
-
 // unpause returns to the phase pause left and restarts its clock.
 func (m *model) unpause() tea.Cmd {
-	m.phase, m.autoPaused = m.resume, false
+	m.phase = m.resume
+	m.focus.Resumed()
 	switch m.phase {
 	case phaseClearing:
-		return m.tick(clearDelay)
+		return m.ticker.Tick(clearDelay)
 	case phaseDropping:
-		return m.tick(dropDelay)
+		return m.ticker.Tick(dropDelay)
 	}
 	return m.frame()
 }
@@ -127,7 +91,7 @@ func (m *model) unpause() tea.Cmd {
 // frame schedules the next pill animation frame and marks when the previous one was.
 func (m *model) frame() tea.Cmd {
 	m.lastFrame = time.Now()
-	return m.tick(frameDelay)
+	return m.ticker.Tick(frameDelay)
 }
 
 // fitScale picks the largest board scale whose framed bottle fits the
@@ -141,7 +105,7 @@ func fitScale(w, h int) (s, ts int) {
 			continue
 		}
 		for _, mirrored := range []bool{true, false} {
-			for ts = maxTitleScale; ts >= 0; ts-- {
+			for ts = layout.MaxTitleScale; ts >= 0; ts-- {
 				need := layoutWidth(s, ts)
 				if mirrored {
 					need += colWidth(s, ts) + colPad
@@ -160,62 +124,51 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		m.scale, m.titleScale = fitScale(msg.Width, msg.Height)
-		m.bg.resize(msg.Width, msg.Height)
+		m.bg.Resize(msg.Width, msg.Height)
 		return m, nil
 	case tea.BlurMsg:
-		m.blurred = true
-		m.countdown = 0
-		if m.phase != phasePaused {
+		if m.focus.Blur(m.running()) {
 			m.pause()
-			m.autoPaused = true
 		}
 		return m, nil
 	case tea.FocusMsg:
-		m.blurred = false
-		if m.autoPaused {
-			m.countdown = countdownFrom
-			return m, m.count()
+		return m, m.focus.Regain()
+	case session.CountMsg:
+		resume, cmd := m.focus.Count(msg)
+		if resume {
+			return m, m.unpause()
 		}
-		return m, nil
-	case countMsg:
-		if msg.id != m.countID || m.countdown == 0 {
-			return m, nil
-		}
-		m.countdown--
-		if m.countdown > 0 {
-			return m, m.count()
-		}
-		return m, m.unpause()
+		return m, cmd
 	case tea.KeyMsg:
 		return m.key(msg.String())
 	case bgMsg:
 		if !m.lastBg.IsZero() {
-			m.bg.step(msg.at.Sub(m.lastBg))
+			m.bg.Step(msg.at.Sub(m.lastBg))
 		}
 		m.lastBg = msg.at
 		return m, bgTick()
-	case tickMsg:
-		if msg.id != m.tickID {
+	case session.TickMsg:
+		if !m.ticker.Current(msg) {
 			return m, nil
 		}
 		switch m.phase {
 		case phaseFalling:
-			dt := msg.at.Sub(m.lastFrame)
-			m.lastFrame = msg.at
-			m.g.Soft = m.softActive(msg.at)
-			m.g.Held = m.g.Soft && m.softHeld
+			dt := msg.At.Sub(m.lastFrame)
+			m.lastFrame = msg.At
+			m.g.Soft = m.down.Active(msg.At)
+			m.g.Held = m.g.Soft && m.down.Held()
 			if m.g.Advance(dt) {
 				return m.lock()
 			}
-			return m, m.tick(frameDelay)
+			return m, m.ticker.Tick(frameDelay)
 		case phaseClearing:
-			m.bg.flare(m.g.clearingColor())
+			m.bg.Flare(hex[m.g.clearingColor()])
 			m.g.Clear()
 			m.phase = phaseDropping
-			return m, m.tick(dropDelay)
+			return m, m.ticker.Tick(dropDelay)
 		case phaseDropping:
 			if m.g.DropStep() {
-				return m, m.tick(dropDelay)
+				return m, m.ticker.Tick(dropDelay)
 			}
 			return m.resolve()
 		}
@@ -265,7 +218,6 @@ func (m model) key(k string) (tea.Model, tea.Cmd) {
 		}
 	case phasePaused:
 		if k == "p" {
-			m.countdown = 0
 			return m, m.unpause()
 		}
 	case phaseLevelClear:
@@ -288,55 +240,32 @@ func (m model) start(score int) (tea.Model, tea.Cmd) {
 	return m.resolve()
 }
 
+// lock writes the pill into the board; a down key still held waits for a fresh press.
 func (m model) lock() (tea.Model, tea.Cmd) {
 	m.g.Lock()
-	m.softBlocked, m.softHeld = true, false
+	m.down.Block()
 	return m.resolve()
 }
 
 // slide moves the pill sideways, ignoring presses that arrive faster than moveGap.
 func (m *model) slide(dx int, at time.Time) {
-	if at.Sub(m.lastMove) < moveGap {
-		return
+	if m.slideGate.Allow(at) {
+		m.g.Move(dx)
 	}
-	m.lastMove = at
-	m.g.Move(dx)
 }
 
-// pressDown registers a down press. A fresh press opens a soft-drop window long
-// enough to reach the first auto-repeat; each repeat extends it by holdGap. A key
-// still held from the previous pill is ignored until it is released and pressed again.
+// pressDown registers a down press and starts the soft drop when it counts.
 func (m *model) pressDown(at time.Time) {
-	gap := at.Sub(m.lastDown)
-	fresh := m.lastDown.IsZero() || gap >= m.repeatDelay+repeatSlack ||
-		(!m.lastFresh && gap >= holdGap)
-	if m.lastFresh && !fresh {
-		m.repeatDelay = min(maxRepeatDelay, max(holdGap, gap))
+	if m.down.Press(at) {
+		m.g.Soft = true
 	}
-	m.lastDown, m.lastFresh = at, fresh
-	if m.softBlocked && !fresh {
-		return
-	}
-	m.softBlocked = false
-	m.softHeld = !fresh
-	window := holdGap
-	if fresh {
-		window = m.repeatDelay + repeatSlack
-	}
-	m.softUntil = at.Add(window)
-	m.g.Soft = true
-}
-
-// softActive reports whether the down key counts as held right now.
-func (m model) softActive(at time.Time) bool {
-	return !m.softBlocked && at.Before(m.softUntil)
 }
 
 // resolve runs after a lock or a settled cascade: flash matches, or spawn, or end the round.
 func (m model) resolve() (tea.Model, tea.Cmd) {
 	if m.g.MarkMatches() > 0 {
 		m.phase = phaseClearing
-		return m, m.tick(clearDelay)
+		return m, m.ticker.Tick(clearDelay)
 	}
 	if m.g.Viruses == 0 {
 		m.phase = phaseLevelClear

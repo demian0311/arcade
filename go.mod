@@ -1,4 +1,4 @@
-module github.com/demian0311/pilldoc
+module github.com/demian0311/arcade
 
 go 1.27.2
 

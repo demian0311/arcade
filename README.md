@@ -1,18 +1,20 @@
-# pilldoc
+# arcade
 
-A terminal Dr. Mario. Pills and viruses are drawn in braille, so a cell is
-as small as a character and the bottle scales to the terminal height.
+Terminal games drawn in braille, one binary each, on a shared renderer.
+A cell is as small as a character, the board scales to the terminal height,
+and an animated field fills the rest of the screen.
 
-## Install
+| Game | Install | What it is |
+|---|---|---|
+| pilldoc | `go install github.com/demian0311/arcade/cmd/pilldoc@latest` | Dr. Mario |
 
-```
-go install github.com/demian0311/pilldoc@latest
-```
+Every game needs a font with braille glyphs. Switching away from the
+terminal pauses the game and dims the screen; switching back counts down and
+resumes.
 
-Then run `pilldoc`. It needs a terminal at least 34 columns by 18 rows and a
-font with braille glyphs.
+## pilldoc
 
-## Keys
+A terminal at least 34 columns by 18 rows.
 
 | Key | Action |
 |---|---|
@@ -24,5 +26,10 @@ font with braille glyphs.
 | enter | Start, next level, back to the menu |
 | q | Quit |
 
-Switching away from the terminal pauses the game and dims the screen.
-Switching back counts down and resumes.
+## Layout
+
+- `cmd/<game>` is one game and its binary.
+- `internal/canvas` is the braille dot grid and rounded tiles.
+- `internal/backdrop` is the animated field behind a game.
+- `internal/layout` places blocks over the backdrop, holds the styles and the dot-font title.
+- `internal/session` holds ticks, the focus pause and countdown, and tap-versus-hold key detection.
