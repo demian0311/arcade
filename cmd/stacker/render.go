@@ -157,6 +157,26 @@ func drawOutline(c *canvas.Canvas, ox, oy, s int, cell Cell, i canvas.Ink) {
 	}
 }
 
+// completing says which rows would be full if p locked where it is.
+func (g *Game) completing(p Piece) (full [BoardH]bool) {
+	var board Board = g.Board
+	p.cells(func(x, y int, _ Link) {
+		if y >= 0 && y < BoardH {
+			board[y][x].Color = colorOf[p.Kind]
+		}
+	})
+	for y := range board {
+		full[y] = true
+		for x := range board[y] {
+			if board[y][x].Color == None {
+				full[y] = false
+				break
+			}
+		}
+	}
+	return full
+}
+
 // landing is where the falling piece would come to rest.
 func (g *Game) landing() Piece {
 	p := *g.Piece
@@ -210,6 +230,14 @@ func renderBoard(g *Game, s int, fx effects, now time.Time) string {
 		clearT = min(1, float64(now.Sub(fx.clearAt))/float64(clearDelay))
 	}
 
+	// Rows the piece would complete where it is heading glow in their bright tints.
+	var ghost Piece
+	var would [BoardH]bool
+	if g.Piece != nil {
+		ghost = g.landing()
+		would = g.completing(ghost)
+	}
+
 	for y := 0; y < BoardH; y++ {
 		for x := 0; x < BoardW; x++ {
 			cell := g.Board[y][x]
@@ -228,14 +256,20 @@ func renderBoard(g *Game, s int, fx effects, now time.Time) string {
 				if landInk == inkBright {
 					ink = canvas.Ink(cell.Color) | inkBright
 				}
+			case would[y]:
+				ink = canvas.Ink(cell.Color) | inkBright
 			}
 			drawTileInk(c, x*n, y*n, s, cell, ink)
 		}
 	}
 	if p := g.Piece; p != nil {
-		if ghost := g.landing(); ghost.Y > p.Y {
+		if ghost.Y > p.Y {
 			ghost.cells(func(x, y int, l Link) {
-				drawOutline(c, x*n, y*n, s, Cell{Color: colorOf[p.Kind], Links: l}, inkGhost)
+				ink := inkGhost
+				if y >= 0 && y < BoardH && would[y] {
+					ink = inkWhite // the ghost's cells in a row it would complete
+				}
+				drawOutline(c, x*n, y*n, s, Cell{Color: colorOf[p.Kind], Links: l}, ink)
 			})
 		}
 		off := int(g.Prog * float64(n)) // sub-cell fall, in dots

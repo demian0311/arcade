@@ -175,3 +175,20 @@ func TestSlamRecordsTheBandItCrossed(t *testing.T) {
 		t.Fatal("the landing flash was not started")
 	}
 }
+
+func TestCompletingRowsFollowTheLanding(t *testing.T) {
+	g := NewGame(0, 1)
+	for x := 1; x < BoardW; x++ {
+		g.Board[BoardH-1][x] = Cell{Color: Red}
+		g.Board[BoardH-3][x] = Cell{Color: Red}
+	}
+	g.Piece = &Piece{Kind: I, Rot: 1, X: -2, Y: 0} // vertical bar over column 0
+	full := g.completing(g.landing())
+	if !full[BoardH-1] || !full[BoardH-3] || full[BoardH-2] {
+		t.Fatalf("completing rows %v", full)
+	}
+	g.Piece.X = 3
+	if full := g.completing(g.landing()); full[BoardH-1] {
+		t.Fatal("a bar away from the gap completes nothing")
+	}
+}
