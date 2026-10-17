@@ -132,13 +132,13 @@ func (m *model) frame() tea.Cmd {
 
 // fitScale picks the largest board scale whose framed bottle fits the
 // terminal height, then the largest title scale whose side columns fit the
-// width. Both are 0 when nothing fits.
+// width, down to the plain-text title at 0. Both are 0 when nothing fits.
 func fitScale(w, h int) (s, ts int) {
 	for s = maxScale; s >= 1; s-- {
 		if boardRows(s) > h {
 			continue
 		}
-		for ts = maxTitleScale; ts >= 1; ts-- {
+		for ts = maxTitleScale; ts >= 0; ts-- {
 			if layoutWidth(s, ts) <= w && sideRows(s, ts) <= boardRows(s) {
 				return s, ts
 			}

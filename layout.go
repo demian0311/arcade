@@ -63,11 +63,33 @@ func titleDots(ts int) (w, h int) {
 	return w, glyphH * ts
 }
 
-func titleWidth(ts int) int  { w, _ := titleDots(ts); return (w + 1) / 2 }
-func titleHeight(ts int) int { _, h := titleDots(ts); return (h + 3) / 4 }
+// Title scale 0 is plain text, for terminals too narrow for the dot font.
+func titleWidth(ts int) int {
+	if ts == 0 {
+		return len(titleText)
+	}
+	w, _ := titleDots(ts)
+	return (w + 1) / 2
+}
 
-// renderTitle draws PILLDOC in braille, each letter in a pill colour.
+func titleHeight(ts int) int {
+	if ts == 0 {
+		return 1
+	}
+	_, h := titleDots(ts)
+	return (h + 3) / 4
+}
+
+// renderTitle draws PILLDOC in braille, each letter in a pill colour; at
+// scale 0 it is bold text in the same colours.
 func renderTitle(ts int) string {
+	if ts == 0 {
+		var b strings.Builder
+		for i, r := range titleText {
+			b.WriteString(inkStyles[ink(colors[i%3])].Bold(true).Render(string(r)))
+		}
+		return b.String()
+	}
 
 	c := &canvas{w: titleWidth(ts) * 2, h: titleHeight(ts) * 4}
 	c.dots = make([]ink, c.w*c.h)
@@ -208,7 +230,7 @@ func (m model) View() string {
 		return ""
 	}
 	if m.scale < 1 {
-		need := fmt.Sprintf("pilldoc needs %dx%d, have %dx%d", layoutWidth(1, 1), boardRows(1), m.width, m.height)
+		need := fmt.Sprintf("pilldoc needs %dx%d, have %dx%d", layoutWidth(1, 0), boardRows(1), m.width, m.height)
 		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, need)
 	}
 	v := m.compose(m.blocks())
