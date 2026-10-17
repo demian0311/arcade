@@ -89,9 +89,40 @@ func renderTitle(ts int) string {
 	return c.String()
 }
 
-// layoutHeight is the rows the stacked layout needs at board scale s and title scale ts, with no gaps.
-func layoutHeight(s, ts int) int {
-	return titleHeight(ts) + s + BoardH*s + 2 + 2
+const (
+	colPad = 1 // columns between a side column and the board frame
+
+	// controlsW is the widest padded key hint ("enter next level"), so a side
+	// column never has to break a hint in two.
+	controlsW = 18
+	// maxControlLines is the most hints any phase shows, one per line.
+	maxControlLines = 6
+	// statsW is a padded stat with a seven-digit value.
+	statsW = 15
+)
+
+// boardRows and boardCols are the framed board's size at scale s.
+func boardRows(s int) int { return BoardH*s + 2 }
+func boardCols(s int) int { return BoardW*2*s + 2 }
+
+// nextW is the padded NEXT line at scale s.
+func nextW(s int) int { return 8 + 4*s }
+
+// colWidth is the width of each side column at board scale s and title scale
+// ts. Both columns are the same width, which keeps the board centred.
+func colWidth(s, ts int) int {
+	return max(titleWidth(ts)+2, nextW(s), controlsW, statsW)
+}
+
+// layoutWidth is the columns the side-by-side layout needs.
+func layoutWidth(s, ts int) int {
+	return 2*(colWidth(s, ts)+colPad) + boardCols(s)
+}
+
+// sideRows is the most rows the left column can need: title, next pill and
+// controls, each separated by a blank row.
+func sideRows(s, ts int) int {
+	return titleHeight(ts) + 1 + s + 1 + maxControlLines
 }
 
 func (m model) stats() string {
@@ -100,10 +131,10 @@ func (m model) stats() string {
 	}
 	return padStyle.Render(strings.Join([]string{
 		stat("LEVEL", m.g.Level), stat("SPEED", m.g.Speed), stat("SCORE", m.g.Score), stat("VIRUS", m.g.Viruses),
-	}, "   "))
+	}, "\n"))
 }
 
-// controls is the key hint line for the current phase, wrapped to the terminal width.
+// controls is the key hint line for the current phase, wrapped to the side column.
 func (m model) controls() string {
 	var items []string
 	note := ""
@@ -120,6 +151,7 @@ func (m model) controls() string {
 		note, items = "GAME OVER", []string{"enter menu"}
 	}
 	items = append(items, "q quit")
+	wrap := colWidth(m.scale, m.titleScale) - 2
 	var lines []string
 	line := ""
 	if note != "" {
@@ -129,7 +161,7 @@ func (m model) controls() string {
 		it = dimStyle.Render(it)
 		if line == "" {
 			line = it
-		} else if lipgloss.Width(line)+3+lipgloss.Width(it) > m.width-2 {
+		} else if lipgloss.Width(line)+3+lipgloss.Width(it) > wrap {
 			lines = append(lines, line)
 			line = it
 		} else {
@@ -144,29 +176,26 @@ func (m model) next() string {
 	return padStyle.Render(lipgloss.JoinHorizontal(lipgloss.Center, labelStyle.Render("NEXT"), "  ", renderNext(m.g.Next, m.scale)))
 }
 
-// blocks stacks title, next pill, bottle, stats and controls down the middle of
-// the terminal, spreading spare rows into gaps that show the backdrop.
+// blocks centres the bottle and fills the height with it. The left column
+// hugs the bottle with the title and next pill at the top and the controls at
+// the bottom; the right column holds the stats. Blocks are ordered left to
+// right for compose.
 func (m model) blocks() []block {
-	bs := []block{
-		newBlock(padStyle.Render(renderTitle(m.titleScale))),
-		newBlock(m.next()),
-		newBlock(frameStyle.Render(renderBoard(m.g, m.scale))),
-		newBlock(m.stats()),
-		newBlock(m.controls()),
-	}
-	need := 0
-	for _, b := range bs {
-		need += b.h()
-	}
-	spare := max(0, m.height-need)
-	gap := min(2, spare/(len(bs)-1))
-	y := (m.height - need - gap*(len(bs)-1)) / 2
-	for i := range bs {
-		bs[i].x = max(0, (m.width-bs[i].w)/2)
-		bs[i].y = y
-		y += bs[i].h() + gap
-	}
-	return bs
+	board := newBlock(frameStyle.Render(renderBoard(m.g, m.scale)))
+	board.x = (m.width - board.w) / 2
+	board.y = (m.height - board.h()) / 2
+
+	title := newBlock(padStyle.Render(renderTitle(m.titleScale)))
+	next := newBlock(m.next())
+	ctl := newBlock(m.controls())
+	stats := newBlock(m.stats())
+
+	leftEdge := board.x - colPad
+	title.x, title.y = leftEdge-title.w, board.y
+	next.x, next.y = leftEdge-next.w, title.y+title.h()+1
+	ctl.x, ctl.y = leftEdge-ctl.w, max(next.y+next.h()+1, board.y+board.h()-ctl.h())
+	stats.x, stats.y = board.x+board.w+colPad, board.y
+	return []block{title, next, ctl, board, stats}
 }
 
 func (m model) View() string {
@@ -174,7 +203,7 @@ func (m model) View() string {
 		return ""
 	}
 	if m.scale < 1 {
-		need := fmt.Sprintf("pilldoc needs %dx%d, have %dx%d", titleWidth(1)+2, layoutHeight(1, 1), m.width, m.height)
+		need := fmt.Sprintf("pilldoc needs %dx%d, have %dx%d", layoutWidth(1, 1), boardRows(1), m.width, m.height)
 		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, need)
 	}
 	return m.compose(m.blocks())

@@ -240,7 +240,7 @@ func TestBackdropCoversTerminal(t *testing.T) {
 }
 
 func TestViewFitsTerminal(t *testing.T) {
-	for _, sz := range [][2]int{{44, 23}, {80, 24}, {120, 40}, {200, 70}} {
+	for _, sz := range [][2]int{{66, 18}, {80, 24}, {120, 40}, {200, 70}} {
 		m := newModel()
 		mm, _ := m.Update(tea.WindowSizeMsg{Width: sz[0], Height: sz[1]})
 		m = mm.(model)
