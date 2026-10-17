@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	titleText = "TETRIS"
+	titleText = "STACKER"
 	colPad    = 1 // columns between the side column and the board frame
 
 	// statsW is a padded stat with a seven-digit value; the widest note
@@ -110,7 +110,7 @@ func (m model) View() string {
 		return ""
 	}
 	if m.scale < 1 {
-		need := fmt.Sprintf("tetris needs %dx%d, have %dx%d", layoutWidth(1, 0), boardRows(1), m.width, m.height)
+		need := fmt.Sprintf("stacker needs %dx%d, have %dx%d", layoutWidth(1, 0), boardRows(1), m.width, m.height)
 		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, need)
 	}
 	v := layout.Compose(m.bg, m.width, m.height, m.blocks())

@@ -1,4 +1,4 @@
-// tetris is a terminal Tetris built on Bubble Tea, with pieces drawn in braille.
+// stacker is a terminal falling-tetromino game built on Bubble Tea, with pieces drawn in braille.
 package main
 
 import (

@@ -7,7 +7,7 @@ and an animated field fills the rest of the screen.
 | Game | Install | What it is |
 |---|---|---|
 | pilldoc | `go install github.com/demian0311/arcade/cmd/pilldoc@latest` | Dr. Mario |
-| tetris | `go install github.com/demian0311/arcade/cmd/tetris@latest` | Tetris |
+| stacker | `go install github.com/demian0311/arcade/cmd/stacker@latest` | Falling tetrominoes |
 
 Every game needs a font with braille glyphs. Switching away from the
 terminal pauses the game and dims the screen; switching back counts down and
@@ -27,7 +27,7 @@ A terminal at least 34 columns by 18 rows.
 | enter | Start, next level, back to the menu |
 | q | Quit |
 
-## tetris
+## stacker
 
 A terminal at least 39 columns by 22 rows. Seven-bag pieces, SRS rotation
 with wall kicks, a level every ten lines.
