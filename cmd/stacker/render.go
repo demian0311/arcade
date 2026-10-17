@@ -41,16 +41,25 @@ func newCanvas(cellsW, cellsH, s int) *canvas.Canvas {
 	return canvas.New(cellsW*4*s, cellsH*4*s, palette)
 }
 
-// drawAt paints a cell with its top-left corner at dot (ox,oy). A side joined
-// to the same piece is square and butts against its neighbour; every other
-// side is rounded and, from scale 2 up, leaves a dot of air.
+// drawAt paints a cell with its top-left corner at dot (ox,oy) as a classic
+// block: square, with a chamfered corner and, from scale 2 up, a dot of air
+// on its right and bottom so the stack reads as a grid of bricks.
 func drawAt(c *canvas.Canvas, ox, oy, s int, cell Cell) {
-	drawTile(c, ox, oy, s, cell, inkFor(cell), false)
+	if cell.Color == None {
+		return
+	}
+	n := 4 * s
+	gap := 0
+	if s >= 2 {
+		gap = 1
+	}
+	all := canvas.Corners{TL: true, TR: true, BL: true, BR: true}
+	c.Tile(ox, oy, n-gap, n-gap, 1, all, inkFor(cell))
 }
 
-// drawTile paints a cell in ink i. Hollow leaves only the outline, with no
-// wall on a side joined to the same piece, so a piece outlines as one shape.
-func drawTile(c *canvas.Canvas, ox, oy, s int, cell Cell, i canvas.Ink, hollow bool) {
+// drawOutline paints a cell as a one-dot ring in ink i, with no wall on a
+// side joined to the same piece, so a piece outlines as one shape.
+func drawOutline(c *canvas.Canvas, ox, oy, s int, cell Cell, i canvas.Ink) {
 	if cell.Color == None {
 		return
 	}
@@ -73,14 +82,7 @@ func drawTile(c *canvas.Canvas, ox, oy, s int, cell Cell, i canvas.Ink, hollow b
 		BL: l&(LinkL|LinkD) == 0,
 		BR: l&(LinkR|LinkD) == 0,
 	}
-	r := max(1, n/4)
-	if hollow {
-		r = 1 // a deeper cut would break the one-dot ring at the corners
-	}
-	c.Tile(ox, oy, w, h, r, round, i)
-	if !hollow {
-		return
-	}
+	c.Tile(ox, oy, w, h, 1, round, i)
 	x0, x1, y0, y1 := 1, w-1, 1, h-1
 	if l&LinkL != 0 {
 		x0 = 0
@@ -125,7 +127,7 @@ func renderBoard(g *Game, s int) string {
 	if p := g.Piece; p != nil {
 		if ghost := g.landing(); ghost.Y > p.Y {
 			ghost.cells(func(x, y int, l Link) {
-				drawTile(c, x*n, y*n, s, Cell{Color: colorOf[p.Kind], Links: l}, inkGhost, true)
+				drawOutline(c, x*n, y*n, s, Cell{Color: colorOf[p.Kind], Links: l}, inkGhost)
 			})
 		}
 		off := int(g.Prog * float64(n)) // sub-cell fall, in dots
