@@ -189,7 +189,10 @@ func (m model) next() string {
 func (m model) blocks() []block {
 	board := newBlock(frameStyle.Render(renderBoard(m.g, m.scale)))
 	colW := colWidth(m.scale, m.titleScale)
-	board.x = max((m.width-board.w)/2, (m.width-colW-colPad-board.w)/2+colW+colPad)
+	board.x = (m.width - board.w) / 2
+	if board.x < colW+colPad {
+		board.x = (m.width-colW-colPad-board.w)/2 + colW + colPad
+	}
 	board.y = (m.height - board.h()) / 2
 
 	title := newBlock(padStyle.Render(renderTitle(m.titleScale)))
