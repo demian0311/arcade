@@ -22,10 +22,16 @@ const (
 	frameDelay = 33 * time.Millisecond // falling-pill animation rate
 	clearDelay = 350 * time.Millisecond
 	dropDelay  = 90 * time.Millisecond
-	// holdGap separates key auto-repeat from a real re-press. Terminals send no
-	// key-up, so a down press less than this after the previous one counts as held.
-	holdGap  = 100 * time.Millisecond
-	maxScale = 4
+	// Terminals send no key-up, so a held key is one press, a pause (the repeat
+	// delay, 250 ms on Hyprland's default), then auto-repeat presses 25 ms apart.
+	// holdGap is how long a repeat press keeps the key counted as held; a longer
+	// gap means it was released. A fresh press keeps it held for the learned
+	// repeat delay plus repeatSlack, so a hold does not stutter before repeats start.
+	holdGap            = 100 * time.Millisecond
+	repeatSlack        = 60 * time.Millisecond
+	defaultRepeatDelay = 300 * time.Millisecond
+	maxRepeatDelay     = 700 * time.Millisecond
+	maxScale           = 4
 )
 
 // tickMsg drives the pill, the clear flash and the drop cascade; the id discards stale ticks.
@@ -48,13 +54,16 @@ type model struct {
 	tickID        int
 	lastFrame     time.Time
 	lastDown      time.Time
-	softBlocked   bool // after a landing, soft drop waits for the down key to be released and pressed again
+	lastFresh     bool          // the previous down press began a hold
+	repeatDelay   time.Duration // measured gap from a fresh press to its first repeat
+	softUntil     time.Time     // soft drop runs until this moment, extended by each press
+	softBlocked   bool          // after a landing, soft drop waits for the down key to be released and pressed again
 	bg            *backdrop
 	lastBg        time.Time
 }
 
 func newModel() model {
-	m := model{speed: Med, bg: &backdrop{}}
+	m := model{speed: Med, bg: &backdrop{}, repeatDelay: defaultRepeatDelay}
 	m.g = NewGame(m.level, m.speed, time.Now().UnixNano())
 	return m
 }
@@ -207,21 +216,32 @@ func (m model) lock() (tea.Model, tea.Cmd) {
 	return m.resolve()
 }
 
-// pressDown registers a down press. Soft drop runs while presses keep arriving
-// within holdGap of each other, and a key still held from the previous pill is ignored.
+// pressDown registers a down press. A fresh press opens a soft-drop window long
+// enough to reach the first auto-repeat; each repeat extends it by holdGap. A key
+// still held from the previous pill is ignored until it is released and pressed again.
 func (m *model) pressDown(at time.Time) {
-	held := !m.lastDown.IsZero() && at.Sub(m.lastDown) < holdGap
-	m.lastDown = at
-	if m.softBlocked && held {
+	gap := at.Sub(m.lastDown)
+	fresh := m.lastDown.IsZero() || gap >= m.repeatDelay+repeatSlack ||
+		(!m.lastFresh && gap >= holdGap)
+	if m.lastFresh && !fresh {
+		m.repeatDelay = min(maxRepeatDelay, max(holdGap, gap))
+	}
+	m.lastDown, m.lastFresh = at, fresh
+	if m.softBlocked && !fresh {
 		return
 	}
 	m.softBlocked = false
+	window := holdGap
+	if fresh {
+		window = m.repeatDelay + repeatSlack
+	}
+	m.softUntil = at.Add(window)
 	m.g.Soft = true
 }
 
 // softActive reports whether the down key counts as held right now.
 func (m model) softActive(at time.Time) bool {
-	return !m.softBlocked && !m.lastDown.IsZero() && at.Sub(m.lastDown) < holdGap
+	return !m.softBlocked && at.Before(m.softUntil)
 }
 
 // resolve runs after a lock or a settled cascade: flash matches, or spawn, or end the round.

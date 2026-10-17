@@ -159,38 +159,51 @@ func TestHeldDownDoesNotCarryToNextPill(t *testing.T) {
 	if m.g.Pill == nil || m.g.Soft {
 		t.Fatalf("expected a fresh slow pill, soft=%v", m.g.Soft)
 	}
-	// auto-repeat keeps arriving every 40ms: still held, ignored
-	at := t0
-	for i := 0; i < 10; i++ {
-		at = at.Add(40 * time.Millisecond)
-		m.lastDown = at.Add(-40 * time.Millisecond)
+	at := t0.Add(250 * time.Millisecond) // auto-repeat begins and keeps arriving every 25 ms
+	for i := 0; i < 20; i++ {
 		m.pressDown(at)
+		if m.softActive(at) {
+			t.Fatalf("held key must not soft-drop the new pill (repeat %d)", i)
+		}
+		at = at.Add(25 * time.Millisecond)
 	}
-	if m.g.Soft {
-		t.Fatal("held key must not soft-drop the new pill")
-	}
-	// release, then press again
-	m.pressDown(at.Add(300 * time.Millisecond))
-	if !m.g.Soft {
+	m.pressDown(at.Add(400 * time.Millisecond)) // release, then press again
+	if !m.softActive(at.Add(401 * time.Millisecond)) {
 		t.Fatal("re-press after a gap should soft-drop")
 	}
 }
 
-func TestReleasingDownEndsSoftDrop(t *testing.T) {
+func TestHoldBridgesRepeatDelayAndReleaseEnds(t *testing.T) {
 	m := newModel()
 	t0 := time.Now()
 	m.pressDown(t0)
-	if !m.softActive(t0.Add(holdGap / 2)) {
-		t.Fatal("soft should hold just after a press")
+	if !m.softActive(t0.Add(200 * time.Millisecond)) {
+		t.Fatal("a fresh press must stay soft across the repeat delay")
 	}
-	if m.softActive(t0.Add(holdGap * 2)) {
-		t.Fatal("soft should end once presses stop arriving")
+	if m.softActive(t0.Add(defaultRepeatDelay + repeatSlack + time.Millisecond)) {
+		t.Fatal("a lone tap must end after the bridge window")
 	}
-	for i := 1; i <= 8; i++ { // auto-repeat at 25 ms
-		m.pressDown(t0.Add(time.Duration(i) * 25 * time.Millisecond))
+	at := t0
+	for i := 0; i < 12; i++ { // the first repeat lands at 250 ms, then every 25 ms
+		if i == 0 {
+			at = at.Add(250 * time.Millisecond)
+		} else {
+			at = at.Add(25 * time.Millisecond)
+		}
+		m.pressDown(at)
+		if !m.softActive(at.Add(20 * time.Millisecond)) {
+			t.Fatalf("repeat %d should keep soft alive", i)
+		}
 	}
-	if !m.softActive(t0.Add(250 * time.Millisecond)) {
-		t.Fatal("repeats should keep soft alive")
+	if m.repeatDelay != 250*time.Millisecond {
+		t.Fatalf("learned repeat delay %v", m.repeatDelay)
+	}
+	if m.softActive(at.Add(holdGap + time.Millisecond)) {
+		t.Fatal("soft should end once repeats stop")
+	}
+	m.pressDown(at.Add(500 * time.Millisecond))
+	if !m.softActive(at.Add(500*time.Millisecond + 250*time.Millisecond + repeatSlack - time.Millisecond)) {
+		t.Fatal("the next fresh press should use the learned delay")
 	}
 }
 
