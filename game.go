@@ -122,12 +122,17 @@ type Game struct {
 
 	Prog       float64       // how far the pill has fallen into the next row, 0 to 1
 	Rest       time.Duration // how long the pill has sat on something
-	Soft       bool          // fast drop, set by the down key, cleared when the pill lands
+	Soft       bool          // soft drop, set by the down key, cleared when the pill lands
+	Held       bool          // the down key is a confirmed hold, so soft drop runs at full rate
 	lockResets int           // moves and turns that have restarted the lock delay for this pill
 }
 
 const (
-	softInterval = 45 * time.Millisecond
+	// softInterval is the row period of a confirmed held soft drop. Until the
+	// hold is confirmed a press falls at gravity/tapSoftDivisor, so a tap moves
+	// a row or two instead of the whole bottle.
+	softInterval   = 45 * time.Millisecond
+	tapSoftDivisor = 3
 	// lockDelay is how long a pill may sit on something before it locks when it
 	// landed under gravity; a move or turn restarts it, up to maxLockResets times
 	// per pill. A pill driven down by soft drop locks the moment it lands.
@@ -220,7 +225,10 @@ func (g *Game) Advance(dt time.Duration) bool {
 	}
 	iv := g.Interval()
 	if g.Soft {
-		iv = softInterval
+		iv = max(softInterval, iv/tapSoftDivisor)
+		if g.Held {
+			iv = softInterval
+		}
 	}
 	if !g.canFall() {
 		g.Prog = 0
@@ -357,7 +365,7 @@ func (g *Game) Lock() {
 	g.set(p.X, p.Y, Cell{Kind: Half, Color: p.C[0], Link: l0})
 	g.set(x2, y2, Cell{Kind: Half, Color: p.C[1], Link: l1})
 	g.Pill = nil
-	g.Prog, g.Rest, g.Soft = 0, 0, false
+	g.Prog, g.Rest, g.Soft, g.Held = 0, 0, false, false
 }
 
 func (g *Game) set(x, y int, c Cell) {

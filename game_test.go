@@ -336,3 +336,33 @@ func TestFocusReturnCountsDownThenResumes(t *testing.T) {
 		t.Fatal("a stale countdown step resumed a blurred game")
 	}
 }
+
+func TestTapSoftDropIsSlowerThanHold(t *testing.T) {
+	g := emptyGame()
+	g.Pill = &Pill{X: 0, Y: 0, C: [2]Color{Red, Blue}}
+	g.Soft = true
+	g.Advance(defaultRepeatDelay + repeatSlack)
+	if g.Pill.Y > 3 {
+		t.Fatalf("a tap window fell %d rows", g.Pill.Y)
+	}
+	g.Held = true
+	y := g.Pill.Y
+	g.Advance(softInterval)
+	if g.Pill.Y != y+1 {
+		t.Fatalf("a held soft drop should fall one row per softInterval, y %d -> %d", y, g.Pill.Y)
+	}
+}
+
+func TestRepeatPressConfirmsHold(t *testing.T) {
+	m := newModel()
+	m.phase = phaseFalling
+	at := time.Now()
+	m.pressDown(at)
+	if m.softHeld {
+		t.Fatal("a fresh press is not a hold")
+	}
+	m.pressDown(at.Add(defaultRepeatDelay))
+	if !m.softHeld {
+		t.Fatal("a repeat press should confirm the hold")
+	}
+}

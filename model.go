@@ -70,6 +70,7 @@ type model struct {
 	lastFrame     time.Time
 	lastDown      time.Time
 	lastFresh     bool          // the previous down press began a hold
+	softHeld      bool          // auto-repeat has confirmed the down key is held
 	repeatDelay   time.Duration // measured gap from a fresh press to its first repeat
 	softUntil     time.Time     // soft drop runs until this moment, extended by each press
 	softBlocked   bool          // after a landing, soft drop waits for the down key to be released and pressed again
@@ -194,6 +195,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			dt := msg.at.Sub(m.lastFrame)
 			m.lastFrame = msg.at
 			m.g.Soft = m.softActive(msg.at)
+			m.g.Held = m.g.Soft && m.softHeld
 			if m.g.Advance(dt) {
 				return m.lock()
 			}
@@ -280,7 +282,7 @@ func (m model) start(score int) (tea.Model, tea.Cmd) {
 
 func (m model) lock() (tea.Model, tea.Cmd) {
 	m.g.Lock()
-	m.softBlocked = true
+	m.softBlocked, m.softHeld = true, false
 	return m.resolve()
 }
 
@@ -308,6 +310,7 @@ func (m *model) pressDown(at time.Time) {
 		return
 	}
 	m.softBlocked = false
+	m.softHeld = !fresh
 	window := holdGap
 	if fresh {
 		window = m.repeatDelay + repeatSlack
