@@ -116,9 +116,9 @@ func renderTitle(ts int) string {
 const (
 	colPad = 1 // columns between a side column and the board frame
 
-	// controlsW is the widest padded key hint ("enter next level"), so a side
+	// controlsW is the widest padded key hint ("enter start"), so a side
 	// column never has to break a hint in two.
-	controlsW = 18
+	controlsW = 13
 	// maxControlLines is the most hints any phase shows, one per line.
 	maxControlLines = 6
 	// statsW is a padded stat with a seven-digit value.
@@ -173,7 +173,7 @@ func (m model) controls() string {
 			note = fmt.Sprintf("RESUMING IN %d", m.countdown)
 		}
 	case phaseLevelClear:
-		note, items = "LEVEL CLEAR", []string{"enter next level"}
+		note, items = "LEVEL CLEAR", []string{"enter next"}
 	case phaseGameOver:
 		note, items = "GAME OVER", []string{"enter menu"}
 	}
