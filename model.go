@@ -26,8 +26,11 @@ const (
 	clearDelay = 350 * time.Millisecond
 	dropDelay  = 90 * time.Millisecond
 	sidebarW   = 24
-	chromeW    = 6 // bottle border, gap to the sidebar, outer padding
-	maxScale   = 4
+	// holdGap separates key auto-repeat from a real re-press. Terminals send no
+	// key-up, so a down press less than this after the previous one counts as held.
+	holdGap  = 100 * time.Millisecond
+	chromeW  = 6 // bottle border, gap to the sidebar, outer padding
+	maxScale = 4
 )
 
 // tickMsg drives the pill, the clear flash and the drop cascade; the id discards stale ticks.
@@ -48,6 +51,8 @@ type model struct {
 	scale         int
 	tickID        int
 	lastFrame     time.Time
+	lastDown      time.Time
+	softBlocked   bool // after a landing, soft drop waits for the down key to be released and pressed again
 	bg            *backdrop
 	lastBg        time.Time
 }
@@ -156,7 +161,7 @@ func (m model) key(k string) (tea.Model, tea.Cmd) {
 		case "z":
 			m.g.Rotate(false)
 		case "down", "j":
-			m.g.Soft = true
+			m.pressDown(time.Now())
 		case " ":
 			for m.g.Fall() {
 			}
@@ -191,7 +196,19 @@ func (m model) start(score int) (tea.Model, tea.Cmd) {
 
 func (m model) lock() (tea.Model, tea.Cmd) {
 	m.g.Lock()
+	m.softBlocked = true
 	return m.resolve()
+}
+
+// pressDown starts the soft drop, unless the key is still held from the previous pill.
+func (m *model) pressDown(at time.Time) {
+	held := !m.lastDown.IsZero() && at.Sub(m.lastDown) < holdGap
+	m.lastDown = at
+	if m.softBlocked && held {
+		return
+	}
+	m.softBlocked = false
+	m.g.Soft = true
 }
 
 // resolve runs after a lock or a settled cascade: flash matches, or spawn, or end the round.

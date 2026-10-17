@@ -141,6 +141,41 @@ func TestSoftDropResetsOnLock(t *testing.T) {
 	}
 }
 
+func TestHeldDownDoesNotCarryToNextPill(t *testing.T) {
+	m := newModel()
+	m.g = emptyGame()
+	m.g.Board[BoardH-1][7] = Cell{Kind: Virus, Color: Yellow} // keeps the level alive
+	m.g.Viruses = 1
+	m.g.Pill = &Pill{X: 0, Y: 0, C: [2]Color{Red, Blue}}
+	t0 := time.Now()
+	m.pressDown(t0)
+	if !m.g.Soft {
+		t.Fatal("first press should start the soft drop")
+	}
+	for !m.g.Advance(softInterval) {
+	}
+	mm, _ := m.lock()
+	m = mm.(model)
+	if m.g.Pill == nil || m.g.Soft {
+		t.Fatalf("expected a fresh slow pill, soft=%v", m.g.Soft)
+	}
+	// auto-repeat keeps arriving every 40ms: still held, ignored
+	at := t0
+	for i := 0; i < 10; i++ {
+		at = at.Add(40 * time.Millisecond)
+		m.lastDown = at.Add(-40 * time.Millisecond)
+		m.pressDown(at)
+	}
+	if m.g.Soft {
+		t.Fatal("held key must not soft-drop the new pill")
+	}
+	// release, then press again
+	m.pressDown(at.Add(300 * time.Millisecond))
+	if !m.g.Soft {
+		t.Fatal("re-press after a gap should soft-drop")
+	}
+}
+
 func TestBackdropCoversTerminal(t *testing.T) {
 	b := &backdrop{}
 	b.resize(60, 20)
