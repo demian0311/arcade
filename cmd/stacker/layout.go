@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 
@@ -86,7 +87,7 @@ func (m model) next() string {
 // in the terminal when the column fits beside it; otherwise the column and
 // well are centred together. Blocks are ordered left to right for Compose.
 func (m model) blocks() []layout.Block {
-	board := layout.NewBlock(layout.Frame.Render(renderBoard(m.g, m.scale)))
+	board := layout.NewBlock(layout.Frame.Render(renderBoard(m.g, m.scale, m.fx, time.Now())))
 	colW := colWidth(m.scale, m.titleScale)
 	board.X = (m.width - board.W) / 2
 	if board.X < colW+colPad {

@@ -25,6 +25,9 @@ func (t *Ticker) Tick(d time.Duration) tea.Cmd {
 // Current reports whether msg is the tick most recently scheduled.
 func (t *Ticker) Current(msg TickMsg) bool { return msg.ID == t.id }
 
+// ID is the id the current tick carries; for tests.
+func (t *Ticker) ID() int { return t.id }
+
 const (
 	CountdownFrom = 3
 	CountdownStep = 700 * time.Millisecond

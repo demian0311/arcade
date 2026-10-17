@@ -6,6 +6,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/demian0311/arcade/internal/session"
 )
 
 func TestEveryShapeHasFourCells(t *testing.T) {
@@ -129,5 +131,47 @@ func TestGhostRestsOnThePile(t *testing.T) {
 	g.Board[BoardH-1][1] = Cell{Color: Red}
 	if l := g.landing(); l.Y != BoardH-3 {
 		t.Fatalf("ghost landed at y %d", l.Y)
+	}
+}
+
+func TestClearWaitsForTheBurnThenCollapses(t *testing.T) {
+	m := newModel()
+	mm, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = mm.(model)
+	for x := 0; x < BoardW; x++ {
+		m.g.Board[BoardH-1][x] = Cell{Color: Red}
+	}
+	m.g.Board[BoardH-1][0].Color = None
+	m.g.Piece = &Piece{Kind: I, Rot: 1, X: -2, Y: BoardH - 4} // vertical bar filling column 0
+	mm, _ = m.lock()
+	m = mm.(model)
+	if m.phase != phaseClearing || m.g.Lines != 0 {
+		t.Fatalf("lock onto a full row should start clearing: phase %d lines %d", m.phase, m.g.Lines)
+	}
+	start := m.fx.clearAt
+	mm, _ = m.Update(session.TickMsg{ID: m.ticker.ID(), At: start.Add(clearDelay / 2)})
+	m = mm.(model)
+	if m.phase != phaseClearing {
+		t.Fatal("the row collapsed before the burn finished")
+	}
+	mm, _ = m.Update(session.TickMsg{ID: m.ticker.ID(), At: start.Add(clearDelay)})
+	m = mm.(model)
+	if m.phase != phaseFalling || m.g.Lines != 1 {
+		t.Fatalf("after the burn: phase %d lines %d", m.phase, m.g.Lines)
+	}
+}
+
+func TestSlamRecordsTheBandItCrossed(t *testing.T) {
+	m := newModel()
+	mm, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = mm.(model)
+	m.g.Piece = &Piece{Kind: O, X: 4, Y: 0}
+	mm, _ = m.slam()
+	m = mm.(model)
+	if m.fx.slamX0 != 5 || m.fx.slamX1 != 6 || m.fx.slamY0 != 0 || m.fx.slamY1 != BoardH-2 {
+		t.Fatalf("slam band %d..%d x %d..%d", m.fx.slamX0, m.fx.slamX1, m.fx.slamY0, m.fx.slamY1)
+	}
+	if len(m.fx.landed) != 4 || m.fx.landedAt.IsZero() {
+		t.Fatal("the landing flash was not started")
 	}
 }

@@ -21,8 +21,7 @@ const (
 )
 
 const (
-	frameDelay = 33 * time.Millisecond  // falling-piece animation rate
-	clearDelay = 200 * time.Millisecond // full rows flash before they vanish
+	frameDelay = 33 * time.Millisecond // animation rate
 	// moveGap throttles horizontal auto-repeat, which arrives every 25 ms, to a pace a player can stop.
 	moveGap  = 60 * time.Millisecond
 	maxScale = 4
@@ -33,6 +32,7 @@ type bgMsg struct{ at time.Time }
 
 type model struct {
 	g             *Game
+	fx            effects
 	phase         phase
 	resume        phase // the phase a pause returns to
 	focus         session.Focus
@@ -76,7 +76,7 @@ func (m *model) unpause() tea.Cmd {
 	m.phase = m.resume
 	m.focus.Resumed()
 	if m.phase == phaseClearing {
-		return m.ticker.Tick(clearDelay)
+		m.fx.clearAt = time.Now()
 	}
 	return m.frame()
 }
@@ -155,8 +155,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, m.ticker.Tick(frameDelay)
 		case phaseClearing:
-			m.bg.Flare(hex[m.g.Last])
+			if msg.At.Sub(m.fx.clearAt) < clearDelay {
+				return m, m.ticker.Tick(frameDelay)
+			}
 			m.g.Clear()
+			m.fx.clearAt = time.Time{}
 			return m.spawn()
 		}
 	}
@@ -194,9 +197,7 @@ func (m model) key(k string) (tea.Model, tea.Cmd) {
 		case "down", "j":
 			m.pressDown(time.Now())
 		case " ":
-			for m.g.Fall() {
-			}
-			return m.lock()
+			return m.slam()
 		case "p":
 			m.pause()
 		}
@@ -213,16 +214,37 @@ func (m model) key(k string) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// lock writes the piece into the well; a down key still held waits for a fresh press.
+// slam drops the piece to its landing spot at once, leaving a trail over
+// the band it crossed, and locks it.
+func (m model) slam() (tea.Model, tea.Cmd) {
+	p := *m.g.Piece
+	x0, x1, y0 := BoardW, 0, BoardH
+	p.cells(func(x, y int, _ Link) { x0, x1, y0 = min(x0, x), max(x1, x), min(y0, y) })
+	for m.g.Fall() {
+	}
+	y1 := BoardH
+	m.g.Piece.cells(func(_, y int, _ Link) { y1 = min(y1, y) })
+	m.fx.slamX0, m.fx.slamX1, m.fx.slamY0, m.fx.slamY1 = x0, x1, max(0, y0), max(0, y1)
+	m.fx.slamAt = time.Now()
+	return m.lock()
+}
+
+// lock writes the piece into the well and starts its landing flash; a down
+// key still held waits for a fresh press.
 func (m model) lock() (tea.Model, tea.Cmd) {
 	m.down.Block()
+	m.fx.landed = m.fx.landed[:0]
+	m.g.Piece.cells(func(x, y int, _ Link) { m.fx.landed = append(m.fx.landed, Point{x, y}) })
+	m.fx.landedAt = time.Now()
 	if !m.g.Lock() {
 		m.phase = phaseGameOver
 		return m, nil
 	}
 	if m.g.MarkFull() > 0 {
 		m.phase = phaseClearing
-		return m, m.ticker.Tick(clearDelay)
+		m.fx.clearAt = time.Now()
+		m.bg.Flare(hex[Orange])
+		return m, m.frame()
 	}
 	return m.spawn()
 }

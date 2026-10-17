@@ -43,6 +43,8 @@ type Cell struct {
 
 type Board [BoardH][BoardW]Cell
 
+type Point struct{ X, Y int }
+
 type Kind uint8
 
 const (
