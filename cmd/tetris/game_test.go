@@ -122,3 +122,12 @@ func TestBlurPausesAndFocusResumes(t *testing.T) {
 		t.Fatal("focus should start the countdown")
 	}
 }
+
+func TestGhostRestsOnThePile(t *testing.T) {
+	g := NewGame(0, 1)
+	g.Piece = &Piece{Kind: O, X: 0, Y: 0}
+	g.Board[BoardH-1][1] = Cell{Color: Red}
+	if l := g.landing(); l.Y != BoardH-3 {
+		t.Fatalf("ghost landed at y %d", l.Y)
+	}
+}
