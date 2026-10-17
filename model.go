@@ -45,11 +45,22 @@ type tickMsg struct {
 // bgMsg drives the backdrop animation on its own clock.
 type bgMsg struct{ at time.Time }
 
+// countMsg steps the resume countdown after a focus return; the id discards stale steps.
+type countMsg struct{ id int }
+
+const (
+	countdownFrom = 3
+	countdownStep = 700 * time.Millisecond
+)
+
 type model struct {
 	g             *Game
 	phase         phase
 	resume        phase // the phase a pause returns to
 	blurred       bool  // the terminal lost focus; the view fades and play pauses
+	autoPaused    bool  // the pause came from a blur, so focus resumes play after a countdown
+	countdown     int   // seconds left before an auto-paused game resumes, 0 when not counting
+	countID       int
 	level         int
 	speed         Speed
 	width, height int
@@ -93,9 +104,16 @@ func (m *model) pause() {
 	}
 }
 
+// count schedules the next countdown step.
+func (m *model) count() tea.Cmd {
+	m.countID++
+	id := m.countID
+	return tea.Tick(countdownStep, func(time.Time) tea.Msg { return countMsg{id} })
+}
+
 // unpause returns to the phase pause left and restarts its clock.
 func (m *model) unpause() tea.Cmd {
-	m.phase = m.resume
+	m.phase, m.autoPaused = m.resume, false
 	switch m.phase {
 	case phaseClearing:
 		return m.tick(clearDelay)
@@ -137,11 +155,28 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case tea.BlurMsg:
 		m.blurred = true
-		m.pause()
+		m.countdown = 0
+		if m.phase != phasePaused {
+			m.pause()
+			m.autoPaused = true
+		}
 		return m, nil
 	case tea.FocusMsg:
 		m.blurred = false
+		if m.autoPaused {
+			m.countdown = countdownFrom
+			return m, m.count()
+		}
 		return m, nil
+	case countMsg:
+		if msg.id != m.countID || m.countdown == 0 {
+			return m, nil
+		}
+		m.countdown--
+		if m.countdown > 0 {
+			return m, m.count()
+		}
+		return m, m.unpause()
 	case tea.KeyMsg:
 		return m.key(msg.String())
 	case bgMsg:
@@ -220,6 +255,7 @@ func (m model) key(k string) (tea.Model, tea.Cmd) {
 		}
 	case phasePaused:
 		if k == "p" {
+			m.countdown = 0
 			return m, m.unpause()
 		}
 	case phaseLevelClear:

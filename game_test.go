@@ -291,3 +291,48 @@ func TestBlurPausesAndFocusKeepsPaused(t *testing.T) {
 		}
 	}
 }
+
+func TestFocusReturnCountsDownThenResumes(t *testing.T) {
+	m := newModel()
+	m.phase = phaseFalling
+	mm, _ := m.Update(tea.BlurMsg{})
+	m = mm.(model)
+	mm, cmd := m.Update(tea.FocusMsg{})
+	m = mm.(model)
+	if m.phase != phasePaused || m.countdown != countdownFrom || cmd == nil {
+		t.Fatalf("focus should start the countdown: phase %d countdown %d", m.phase, m.countdown)
+	}
+	for i := countdownFrom; i > 0; i-- {
+		mm, _ = m.Update(countMsg{m.countID})
+		m = mm.(model)
+	}
+	if m.phase != phaseFalling || m.countdown != 0 || m.autoPaused {
+		t.Fatalf("countdown should resume play: phase %d countdown %d auto %v", m.phase, m.countdown, m.autoPaused)
+	}
+
+	// A manual pause is not undone by focus.
+	mm, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("p")})
+	m = mm.(model)
+	mm, _ = m.Update(tea.BlurMsg{})
+	m = mm.(model)
+	mm, _ = m.Update(tea.FocusMsg{})
+	m = mm.(model)
+	if m.phase != phasePaused || m.countdown != 0 {
+		t.Fatalf("manual pause should stay paused on focus: phase %d countdown %d", m.phase, m.countdown)
+	}
+
+	// A blur during the countdown cancels it.
+	m.phase = phaseFalling
+	mm, _ = m.Update(tea.BlurMsg{})
+	m = mm.(model)
+	mm, _ = m.Update(tea.FocusMsg{})
+	m = mm.(model)
+	id := m.countID
+	mm, _ = m.Update(tea.BlurMsg{})
+	m = mm.(model)
+	mm, _ = m.Update(countMsg{id})
+	m = mm.(model)
+	if m.phase != phasePaused {
+		t.Fatal("a stale countdown step resumed a blurred game")
+	}
+}

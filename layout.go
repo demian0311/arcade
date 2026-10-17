@@ -147,6 +147,9 @@ func (m model) controls() string {
 		items = []string{"◀ ▶ move", "▲ z rotate", "▼ drop", "spc slam", "p pause"}
 	case phasePaused:
 		note, items = "PAUSED", []string{"p resume"}
+		if m.countdown > 0 {
+			note = fmt.Sprintf("RESUMING IN %d", m.countdown)
+		}
 	case phaseLevelClear:
 		note, items = "LEVEL CLEAR", []string{"enter next level"}
 	case phaseGameOver:
