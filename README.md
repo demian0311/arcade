@@ -8,6 +8,8 @@ and an animated field fills the rest of the screen.
 |---|---|---|
 | pilldoc | `go install github.com/demian0311/arcade/cmd/pilldoc@latest` | Dr. Mario |
 | stacker | `go install github.com/demian0311/arcade/cmd/stacker@latest` | Falling tetrominoes |
+| bricks | `go install github.com/demian0311/arcade/cmd/bricks@latest` | Breakout |
+| invaders | `go install github.com/demian0311/arcade/cmd/invaders@latest` | Space Invaders |
 
 Every game needs a font with braille glyphs. Switching away from the
 terminal pauses the game and dims the screen; switching back counts down and
@@ -41,6 +43,34 @@ with wall kicks, a level every ten lines.
 | space | Slam |
 | p | Pause and resume |
 | enter | Start, back to the menu |
+| q | Quit |
+
+## bricks
+
+A terminal at least 66 columns by 18 rows. The ball moves in dots, the
+paddle gives it spin by where it hits, and some bricks drop a capsule: WIDE
+widens the paddle, SLOW slows the ball. Three lives, faster each level.
+
+| Key | Action |
+|---|---|
+| ◀ ▶ | Hold to move the paddle |
+| space | Launch the ball |
+| p | Pause and resume |
+| enter | Start, next level, back to the menu |
+| q | Quit |
+
+## invaders
+
+A terminal at least 74 columns by 18 rows. Five rows of aliens step across
+and down, faster as they thin. One shot in the air at a time, four shields
+that erode where anything hits them, a mystery ship across the top.
+
+| Key | Action |
+|---|---|
+| ◀ ▶ | Hold to move the cannon |
+| space | Fire |
+| p | Pause and resume |
+| enter | Start, next wave, back to the menu |
 | q | Quit |
 
 ## Layout
