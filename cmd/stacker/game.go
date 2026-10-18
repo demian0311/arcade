@@ -297,7 +297,9 @@ func (g *Game) Move(dx int) bool {
 	return false
 }
 
-// Rotate turns the piece, trying the SRS kicks in order.
+// Rotate turns the piece, trying the SRS kicks in order. Like Move, a piece
+// drawn more than half way into the next row tries each kick in that row
+// first, so a turn does not snap it up when the new footprint is blocked below.
 func (g *Game) Rotate(cw bool) bool {
 	if g.Piece == nil {
 		return false
@@ -311,13 +313,23 @@ func (g *Game) Rotate(cw bool) bool {
 	if g.Piece.Kind == I {
 		table = kicksI
 	}
+	rows := []int{0}
+	if g.Prog >= 0.5 {
+		rows = []int{1, 0}
+	}
 	for _, k := range table[from][dir] {
-		p := *g.Piece
-		p.Rot = (from + 1 + 2*dir) % 4 // +1 clockwise, +3 counter-clockwise
-		p.X += k[0]
-		p.Y -= k[1]
-		if g.fits(p) {
+		for _, dy := range rows {
+			p := *g.Piece
+			p.Rot = (from + 1 + 2*dir) % 4 // +1 clockwise, +3 counter-clockwise
+			p.X += k[0]
+			p.Y += dy - k[1]
+			if !g.fits(p) {
+				continue
+			}
 			*g.Piece = p
+			if dy == 1 {
+				g.Prog = 0
+			}
 			g.settle()
 			return true
 		}

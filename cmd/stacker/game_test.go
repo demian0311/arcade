@@ -238,3 +238,12 @@ func TestMoveAndRotateKeepFallProgress(t *testing.T) {
 		t.Fatalf("a piece that comes to rest should snap flush: canFall %v prog %v", g.canFall(), g.Prog)
 	}
 }
+
+func TestRotatePastHalfWayTakesTheNextRow(t *testing.T) {
+	g := NewGame(0, 1)
+	g.Piece = &Piece{Kind: T, X: 3, Y: 2}
+	g.Prog = 0.6
+	if !g.Rotate(true) || g.Piece.Rot != 1 || g.Piece.Y != 3 || g.Prog != 0 {
+		t.Fatalf("rotate past half way should take the next row: rot %d y %d prog %v", g.Piece.Rot, g.Piece.Y, g.Prog)
+	}
+}
