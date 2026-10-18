@@ -182,9 +182,8 @@ func (m model) key(k string) (tea.Model, tea.Cmd) {
 			m.phase = phasePaused
 		}
 	case phasePaused:
-		if k == "p" {
-			return m, m.unpause()
-		}
+		// Any key resumes; quit was handled above.
+		return m, m.unpause()
 	case phaseWaveClear:
 		if k == "enter" {
 			m.g.startWave(m.g.Wave + 1)

@@ -313,3 +313,23 @@ func TestWideTerminalCentresTheBottle(t *testing.T) {
 		t.Fatalf("bottle is off centre: %d left, %d right", left, right)
 	}
 }
+
+func TestAnyKeyResumesAPause(t *testing.T) {
+	m := newModel()
+	mm, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = mm.(model)
+	want := m.phase
+	mm, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("p")})
+	m = mm.(model)
+	if m.phase != phasePaused {
+		t.Fatalf("p should pause, phase %d", m.phase)
+	}
+	mm, _ = m.Update(tea.KeyMsg{Type: tea.KeySpace})
+	m = mm.(model)
+	if m.phase != want {
+		t.Fatalf("space should resume to phase %d, got %d", want, m.phase)
+	}
+	if !m.running() {
+		t.Fatal("resumed game is not running")
+	}
+}

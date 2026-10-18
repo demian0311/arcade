@@ -71,7 +71,7 @@ func (m model) note() string {
 		if m.focus.Countdown > 0 {
 			return fmt.Sprintf("RESUMING IN %d", m.focus.Countdown)
 		}
-		return "PAUSED"
+		return "SPACE RESUME"
 	case phaseGameOver:
 		return "GAME OVER"
 	}

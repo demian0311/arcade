@@ -217,9 +217,8 @@ func (m model) key(k string) (tea.Model, tea.Cmd) {
 			m.pause()
 		}
 	case phasePaused:
-		if k == "p" {
-			return m, m.unpause()
-		}
+		// Any key resumes; quit was handled above.
+		return m, m.unpause()
 	case phaseLevelClear:
 		if k == "enter" {
 			m.level = min(MaxLevel, m.g.Level+1)

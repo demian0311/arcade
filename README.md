@@ -25,7 +25,7 @@ A terminal at least 34 columns by 18 rows.
 | ▲ or z | Rotate (speed on the menu) |
 | ▼ | Tap to nudge down, hold to drop fast |
 | space | Slam |
-| p | Pause and resume |
+| p | Pause; any key resumes |
 | enter | Start, next level, back to the menu |
 | q | Quit |
 
@@ -41,7 +41,7 @@ with wall kicks, a level every ten lines.
 | z | Rotate counter-clockwise |
 | ▼ | Tap to nudge down, hold to drop fast |
 | space | Slam |
-| p | Pause and resume |
+| p | Pause; any key resumes |
 | enter | Start, back to the menu |
 | q | Quit |
 
@@ -55,7 +55,7 @@ widens the paddle, SLOW slows the ball. Three lives, faster each level.
 |---|---|
 | ◀ ▶ | Hold to move the paddle |
 | space | Launch the ball |
-| p | Pause and resume |
+| p | Pause; any key resumes |
 | enter | Start, next level, back to the menu |
 | q | Quit |
 
@@ -69,7 +69,7 @@ that erode where anything hits them, a mystery ship across the top.
 |---|---|
 | ◀ ▶ | Hold to move the cannon |
 | space | Fire |
-| p | Pause and resume |
+| p | Pause; any key resumes |
 | enter | Start, next wave, back to the menu |
 | q | Quit |
 
