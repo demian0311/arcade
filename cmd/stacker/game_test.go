@@ -212,3 +212,29 @@ func TestAnyKeyResumesAPause(t *testing.T) {
 		t.Fatal("resumed game is not running")
 	}
 }
+
+func TestMoveAndRotateKeepFallProgress(t *testing.T) {
+	g := NewGame(0, 1)
+	g.Piece = &Piece{Kind: T, X: 3, Y: 2}
+	g.Prog = 0.4
+	if !g.Move(1) || g.Piece.X != 4 || g.Piece.Y != 2 || g.Prog != 0.4 {
+		t.Fatalf("move should keep progress: x %d y %d prog %v", g.Piece.X, g.Piece.Y, g.Prog)
+	}
+	if !g.Rotate(true) || g.Prog != 0.4 {
+		t.Fatalf("rotate should keep progress: prog %v", g.Prog)
+	}
+
+	// Past half way, a move happens in the row below and snaps flush there.
+	g.Prog = 0.6
+	if !g.Move(1) || g.Piece.Y != 3 || g.Prog != 0 {
+		t.Fatalf("move past half way should take the next row: y %d prog %v", g.Piece.Y, g.Prog)
+	}
+
+	// Resting after a move snaps flush rather than drawing into the cell below.
+	g.Piece = &Piece{Kind: O, X: 0, Y: BoardH - 3}
+	g.Board[BoardH-1][3] = Cell{Color: Red}
+	g.Prog = 0.3
+	if !g.Move(1) || g.canFall() || g.Prog != 0 {
+		t.Fatalf("a piece that comes to rest should snap flush: canFall %v prog %v", g.canFall(), g.Prog)
+	}
+}

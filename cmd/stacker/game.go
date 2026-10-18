@@ -255,11 +255,13 @@ func (g *Game) Fall() bool {
 	return true
 }
 
-// settle restarts the lock delay after a move or turn, a limited number of times per piece.
+// settle restarts the lock delay after a move or turn, a limited number of
+// times per piece. Fall progress is kept while the piece can still fall, so
+// the picture does not jump back to the top of the row; a piece that now
+// rests snaps flush so it is not drawn into the cell below.
 func (g *Game) settle() {
-	if g.canFall() {
+	if !g.canFall() {
 		g.Prog = 0
-		return
 	}
 	if g.lockResets < maxLockResets {
 		g.Rest = 0
@@ -267,18 +269,32 @@ func (g *Game) settle() {
 	}
 }
 
+// Move slides the piece sideways. A piece drawn more than half way into the
+// next row moves in that row when it fits, so it does not snap up when the
+// new column is blocked below; failing that it moves in its logical row.
 func (g *Game) Move(dx int) bool {
 	if g.Piece == nil {
 		return false
 	}
-	p := *g.Piece
-	p.X += dx
-	if !g.fits(p) {
-		return false
+	rows := []int{0}
+	if g.Prog >= 0.5 {
+		rows = []int{1, 0}
 	}
-	*g.Piece = p
-	g.settle()
-	return true
+	for _, dy := range rows {
+		p := *g.Piece
+		p.X += dx
+		p.Y += dy
+		if !g.fits(p) {
+			continue
+		}
+		*g.Piece = p
+		if dy == 1 {
+			g.Prog = 0
+		}
+		g.settle()
+		return true
+	}
+	return false
 }
 
 // Rotate turns the piece, trying the SRS kicks in order.
